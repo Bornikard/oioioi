@@ -752,6 +752,13 @@ class TestProblemSearch(TestCase, AssertContainsOnlyMixin):
         self.assertEqual(response.status_code, 200)
         self.assert_contains_only(response, ("Zadanko",))
 
+    @override_settings(PROBLEM_TAGS_VISIBLE=False)
+    def test_search_name_without_tags(self):
+        self.client.get("/c/c/")
+        response = self.client.get(self.url, {"q": "zadan"})
+        self.assertEqual(response.status_code, 200)
+        self.assert_contains_only(response, ("Zadanko",))
+
     def test_search_name_unicode(self):
         self.client.get("/c/c/")
         response = self.client.get(self.url, {"q": "Żółć"})

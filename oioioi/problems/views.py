@@ -236,15 +236,19 @@ def _get_problems_by_query(query):
     return filtered_problems.distinct()
 
 
-def filter_problems_by_query(problems, datadict):
+def filter_problems_by_name(problems, datadict):
     query = datadict.get("q", "")
+    if query:
+        problems = problems.filter(pk__in=_get_problems_by_query(query))
+    return problems
+
+
+def filter_problems_by_query(problems, datadict):
     algorithm_tags = datadict.getlist("algorithm")
     difficulty_tags = datadict.getlist("difficulty")
     origin_tags = datadict.getlist("origin")
 
-    if query:
-        problems_matching_query = _get_problems_by_query(query)
-        problems = problems.filter(pk__in=problems_matching_query)
+    problems = filter_problems_by_name(problems, datadict)
     if difficulty_tags:
         problems = problems.filter(difficultytag__name__in=difficulty_tags)
     if origin_tags:
@@ -295,6 +299,8 @@ def problemset_get_problems(request):
 
     if settings.PROBLEM_TAGS_VISIBLE:
         problems = filter_problems_by_query(problems, request.GET)
+    else:
+        problems = filter_problems_by_name(problems, request.GET)
 
     if settings.PROBLEM_STATISTICS_AVAILABLE:
         # We annotate all of the statistics to assure that the display
