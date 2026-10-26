@@ -65,7 +65,8 @@ services:
       <<: *common-envs
       WEB_URL: 'web:8000'
     cap_add: [ALL]
-    # sio2jail mounts inside the container, which the default AppArmor profile denies.
-    security_opt: [apparmor=unconfined]
+    # sio2jail mounts and calls pivot_root inside the container, which the
+    # default AppArmor and seccomp profiles deny.
+    security_opt: [apparmor=unconfined, seccomp=unconfined]
     depends_on: [web]
     stop_grace_period: 1m
