@@ -48,6 +48,8 @@ function enable_autoselect_and_reload_menu(
 function init_search_selection(id) {
     $(function(){
         const input = $('#' + id);
+        // Set when a problem hint is chosen, so that the search runs at once.
+        let submit_after_select = false;
 
         // The default source - returns hints for all tags and problems.
         const source_default = function(query, process) {
@@ -113,7 +115,9 @@ function init_search_selection(id) {
                     enable_autoselect_and_reload_menu(
                         typeahead, source_origincategory, input, result
                     );
-                } else if (item.trigger !== 'problem') {
+                } else if (item.trigger === 'problem') {
+                    submit_after_select = true;
+                } else {
                     // At this point for anything other than a problem we
                     // want to create a search tag
                     const value = item.value;
@@ -168,6 +172,12 @@ function init_search_selection(id) {
                 }
 
                 return result;
+            },
+            afterSelect: function() {
+                if (submit_after_select) {
+                    submit_after_select = false;
+                    input.closest('form')[0].requestSubmit();
+                }
             },
         });
     });
