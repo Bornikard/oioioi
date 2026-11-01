@@ -16,7 +16,8 @@ class ProblemNameListFilter(SimpleListFilter):
         # name twice.
         matched_problem_names = list(
             self.initial_query_manager.annotate(pi_contest=self.contest_field)
-            .filter(pi_contest=request.contest)
+            # An annotation compares by value, so a Contest would be cast to its name.
+            .filter(pi_contest=request.contest.pk if request.contest else None)
             .prefetch_related(self.related_names)
             .annotate(problem_legacy_name=self.legacy_name_field)
             .annotate(problem_localized_name=Subquery(ProblemName.objects.filter(problem=self.outer_ref, language=get_language()).values("name")))

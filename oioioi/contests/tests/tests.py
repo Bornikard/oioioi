@@ -325,6 +325,11 @@ class TestSubmissionListFilters(TestCase):
         response = self.client.get(self.url, {"pi": "Zadanie z tłumaczeniami", "q": "Sumżyce"})
         self.assertContains(response, "0 submissions")
 
+    def test_problem_filter_in_contest(self):
+        response = self.client.get(self.curl)
+        problem_filter = next(spec for spec in response.context["cl"].filter_specs if spec.parameter_name == "pi")
+        self.assertEqual(problem_filter.lookup_choices, [("Sumżyce", "Sumżyce")])
+
 
 @override_settings(CONTEST_MODE=ContestMode.neutral, ROOT_URLCONF="oioioi.contests.tests.test_urls")
 class TestUrls(TestCase):
