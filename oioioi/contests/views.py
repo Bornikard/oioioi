@@ -809,6 +809,7 @@ def rejudge_all_submissions_for_problem_view(request, problem_instance_id=None):
         rejudge_type = form.cleaned_data["rejudge_type"]
         tests = form.cleaned_data.get("tests", [])
         for problem_instance, submissions in submissions_by_instance.items():
+            request.contest.controller.problem_rejudge_started(problem_instance, submissions)
             for submission in submissions:
                 problem_instance.controller.judge(submission, {"tests_to_judge": tests, "rejudge_type": rejudge_type}, is_rejudge=True)
         messages.info(

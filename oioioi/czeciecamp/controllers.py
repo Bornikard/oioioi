@@ -2,6 +2,7 @@ from operator import itemgetter  # pylint: disable=E0611
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.db import transaction
 from django.db.models import Max
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -16,6 +17,7 @@ from oioioi.czeciecamp.models import (
     SCORING_LAST,
     STALE_NAME,
     CampRanking,
+    CzecieCampConfig,
     create_default_rankings,
     get_camp_config,
     medal_places,
@@ -28,6 +30,8 @@ from oioioi.rankings.controllers import DefaultRankingController
 from oioioi.rankings.models import Ranking
 
 PRIVILEGED_PERMISSIONS = ("admin", "observer")
+# The newest report of these kinds decides about the score of a submission.
+RESULT_REPORT_KINDS = ("NORMAL", "FAILURE")
 
 
 def get_last_round_end(contest):
@@ -56,6 +60,38 @@ def is_daily_submission(round, date):
     if round.is_trial or date < round.start_date:
         return False
     return round.end_date is None or date <= round.end_date
+
+
+def best_submissions(submissions, pi_by_id, counting_end, stale_end, last_daily, score_of):
+    """Picks the submissions counted in rankings, from ``submissions`` sorted
+    by date, with the score of each given by ``score_of`` (``None`` means it
+    is left out).
+
+    Returns dicts for Dzienne and Stałe, mapping (user_id, pi_id) to
+    (points, submission_id); earliest best one wins, or the last one for
+    Dzienne counting the last submission.
+    """
+    best_daily = {}
+    best_stale = {}
+    for submission in submissions:
+        if counting_end is not None and submission.date > counting_end:
+            continue
+        pi = pi_by_id[submission.problem_instance_id]
+        # E.g. sent before the round was moved later; only admins can submit early.
+        if submission.date < pi.round.start_date:
+            continue
+        score = score_of(submission)
+        if score is None:
+            continue
+        points = score.to_int()
+        cell_key = (submission.user_id, pi.id)
+        if stale_end is None or submission.date <= stale_end:
+            if cell_key not in best_stale or points > best_stale[cell_key][0]:
+                best_stale[cell_key] = (points, submission.id)
+        if is_daily_submission(pi.round, submission.date):
+            if last_daily or cell_key not in best_daily or points > best_daily[cell_key][0]:
+                best_daily[cell_key] = (points, submission.id)
+    return best_daily, best_stale
 
 
 def round_in_rankings(round, config, timestamp):
@@ -96,6 +132,29 @@ class CzecieCampContestController(ProgrammingContestController):
         if get_camp_config(self.contest).results_visible_during_round:
             return True
         return super().results_visible(request, submission)
+
+    def problem_rejudge_started(self, problem_instance, submissions):
+        """Remembers the moment, so that a report can compare the results
+        from before it with the current ones. Only submissions which already
+        have a result can be compared.
+        """
+        count = (
+            Submission.objects.filter(
+                pk__in=list(submissions.values_list("pk", flat=True)),
+                kind="NORMAL",
+                user__isnull=False,
+                submissionreport__kind__in=RESULT_REPORT_KINDS,
+            )
+            .distinct()
+            .count()
+        )
+        if not count:
+            return
+        get_camp_config(self.contest)
+        with transaction.atomic():
+            config = CzecieCampConfig.objects.select_for_update().get(contest=self.contest)
+            config.last_rejudges[str(problem_instance.id)] = {"at": timezone.now().isoformat(), "count": count}
+            config.save(update_fields=["last_rejudges"])
 
     def adjust_contest(self):
         super().adjust_contest()
@@ -229,25 +288,7 @@ class CzecieCampRankingController(DefaultRankingController):
             .order_by("date", "id")
         )
 
-        # (user_id, pi_id) -> (points, submission_id); earliest best one wins,
-        # or the last one for Dzienne counting the last submission
-        best_daily = {}
-        best_stale = {}
-        for submission in submissions:
-            if counting_end is not None and submission.date > counting_end:
-                continue
-            pi = pi_by_id[submission.problem_instance_id]
-            # E.g. sent before the round was moved later; only admins can submit early.
-            if submission.date < pi.round.start_date:
-                continue
-            points = submission.score.to_int()
-            cell_key = (submission.user_id, pi.id)
-            if stale_end is None or submission.date <= stale_end:
-                if cell_key not in best_stale or points > best_stale[cell_key][0]:
-                    best_stale[cell_key] = (points, submission.id)
-            if is_daily_submission(pi.round, submission.date):
-                if last_daily or cell_key not in best_daily or points > best_daily[cell_key][0]:
-                    best_daily[cell_key] = (points, submission.id)
+        best_daily, best_stale = best_submissions(submissions, pi_by_id, counting_end, stale_end, last_daily, lambda submission: submission.score)
 
         rows = []
         for user in users:

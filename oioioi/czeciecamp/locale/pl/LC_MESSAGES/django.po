@@ -418,3 +418,42 @@ msgstr "Login lub e-mail"
 
 msgid "Password authentication with e-mail"
 msgstr "Logowanie hasłem przez e-mail"
+
+msgid "Rejudge report"
+msgstr "Raport z ponownej oceny"
+
+msgid "Rejudged %(rejudged)s of %(total)s submissions."
+msgstr "Oceniono ponownie %(rejudged)s z %(total)s zgłoszeń."
+
+msgid "Still in progress, results may change."
+msgstr "Ocena trwa, wyniki mogą się jeszcze zmienić."
+
+msgid "The rejudge has not changed anything."
+msgstr "Ponowna ocena niczego nie zmieniła."
+
+msgid "Ranking %(name)s: changed for %(count)s participant."
+msgid_plural "Ranking %(name)s: changed for %(count)s participants."
+msgstr[0] "Ranking %(name)s: zmiana dla %(count)s uczestnika."
+msgstr[1] "Ranking %(name)s: zmiana dla %(count)s uczestników."
+msgstr[2] "Ranking %(name)s: zmiana dla %(count)s uczestników."
+
+msgid "Ranking %(name)s: no changes."
+msgstr "Ranking %(name)s: bez zmian."
+
+msgid "This problem has no ranking of its round."
+msgstr "To zadanie nie ma rankingu rundy."
+
+msgid "Submissions"
+msgstr "Zgłoszenia"
+
+msgid "Not in the ranking"
+msgstr "Poza rankingiem"
+
+msgid "No changes"
+msgstr "Bez zmian"
+
+msgid "Ranking points"
+msgstr "Punkty w rankingu"
+
+msgid "last rejudges of problems"
+msgstr "ostatnie ponowne oceny zadań"

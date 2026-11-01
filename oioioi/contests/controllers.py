@@ -733,6 +733,11 @@ class ContestController(RegisteredSubclassesBase, ObjectWithMixins):
     def judge(self, submission, extra_args=None, is_rejudge=False):
         submission.problem_instance.problem.controller.judge(submission, extra_args, is_rejudge)
 
+    def problem_rejudge_started(self, problem_instance, submissions):
+        """Called before ``submissions`` of ``problem_instance`` get rejudged
+        from the page of the problem. Does nothing by default.
+        """
+
     def fill_evaluation_environ(self, environ, submission):
         submission.problem_instance.problem.controller.fill_evaluation_environ(environ, submission)
 

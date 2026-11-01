@@ -52,6 +52,8 @@ class CzecieCampConfig(models.Model):
     # Ids of users who are participants, but are left out of all rankings
     # (e.g. remote participants, guests); admins still see them, greyed out.
     hidden_users = models.JSONField(default=list, blank=True, verbose_name=_("participants hidden in rankings"))
+    # Problem instance id -> {"at": when the rejudge was started, "count": submissions to compare}.
+    last_rejudges = models.JSONField(default=dict, blank=True, verbose_name=_("last rejudges of problems"))
 
     class Meta:
         verbose_name = _("Czecie camp config")

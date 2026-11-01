@@ -1,0 +1,74 @@
+{% extends "base-with-menu.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Rejudge report" %}{% endblock %}
+
+{% block main-content %}
+<h1>{% trans "Rejudge report" %}</h1>
+<p>{{ problem_instance.problem.name }} ({{ problem_instance.short_name }}), {{ report.started_at|date:"j E Y, H:i" }}</p>
+<p>
+    {% blocktrans with rejudged=report.rejudged total=report.count %}Rejudged {{ rejudged }} of {{ total }} submissions.{% endblocktrans %}
+    {% if report.in_progress %}<strong>{% trans "Still in progress, results may change." %}</strong>{% endif %}
+</p>
+
+{% if not report.rows %}
+    <p>{% trans "The rejudge has not changed anything." %}</p>
+{% else %}
+    {% if report.ranking %}
+        <p><strong>
+            {% if report.ranking_changes_count %}
+                {% blocktrans with name=report.ranking.name count count=report.ranking_changes_count %}Ranking {{ name }}: changed for {{ count }} participant.{% plural %}Ranking {{ name }}: changed for {{ count }} participants.{% endblocktrans %}
+            {% else %}
+                {% blocktrans with name=report.ranking.name %}Ranking {{ name }}: no changes.{% endblocktrans %}
+            {% endif %}
+        </strong></p>
+    {% else %}
+        <p class="text-muted">{% trans "This problem has no ranking of its round." %}</p>
+    {% endif %}
+
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>{% trans "Participant" %}</th>
+                <th>{% trans "Submissions" %}</th>
+                <th>{% trans "Ranking" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in report.rows %}
+                <tr{% if not row.ranking.parts %} class="text-muted"{% endif %}>
+                    <td>{{ row.user.get_full_name|default:row.user.username }}</td>
+                    <td>
+                        {% for submission in row.submissions %}
+                            <div>
+                                <a href="{% url 'submission' contest_id=contest.id submission_id=submission.id %}">#{{ submission.id }}</a>
+                                {{ submission.old|default_if_none:"—" }} → {{ submission.new|default_if_none:"—" }}
+                            </div>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        {% if not row.ranking %}
+                            {% trans "Not in the ranking" %}
+                        {% elif not row.ranking.parts %}
+                            {% trans "No changes" %}
+                        {% else %}
+                            {% for part in row.ranking.parts %}
+                                <div>
+                                    {{ part.name }}
+                                    {{ part.old }}{% if part.old_submission %}
+                                        (<a href="{% url 'submission' contest_id=contest.id submission_id=part.old_submission %}">#{{ part.old_submission }}</a>){% endif %}
+                                    → {{ part.new }}{% if part.new_submission %}
+                                        (<a href="{% url 'submission' contest_id=contest.id submission_id=part.new_submission %}">#{{ part.new_submission }}</a>){% endif %}
+                                </div>
+                            {% endfor %}
+                            {% if row.ranking.changed %}
+                                <div><strong>{% trans "Ranking points" %} {{ row.ranking.old|default_if_none:"—" }} → {{ row.ranking.new|default_if_none:"—" }}</strong></div>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endif %}
+{% endblock %}

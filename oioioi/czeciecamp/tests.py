@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.test import RequestFactory
@@ -6,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from oioioi.base.tests import TestCase, fake_time
-from oioioi.contests.models import Contest, ProblemInstance, Round, Submission
+from oioioi.contests.models import Contest, ProblemInstance, Round, ScoreReport, Submission, SubmissionReport
 from oioioi.contests.scores import IntegerScore
 from oioioi.czeciecamp.forms import make_contest_id
 from oioioi.czeciecamp.models import (
@@ -20,9 +21,10 @@ from oioioi.czeciecamp.models import (
     ordered_rounds,
     ranking_label,
 )
+from oioioi.czeciecamp.rejudge_report import build_rejudge_report
 from oioioi.czeciecamp.views import rounded_down, rounded_now
 from oioioi.participants.models import Participant
-from oioioi.problems.models import Problem
+from oioioi.problems.models import Problem, ProblemSite
 from oioioi.rankings.models import Ranking
 
 CONTROLLER = "oioioi.czeciecamp.controllers.CzecieCampContestController"
@@ -754,3 +756,191 @@ class TestResultsVisibleDuringRound(CampTestCase):
         config.results_visible_during_round = True
         config.save()
         self.assertTrue(controller.results_visible(request, submission))
+
+
+class TestRejudgeReport(CampTestCase):
+    REJUDGED_AT = _date(5)
+
+    def setUp(self):
+        super().setUp()
+        self.ranking = self._round_ranking(self.round1)
+        self.url = reverse("czeciecamp_rejudge_report", kwargs={"contest_id": self.contest.id, "problem_instance_id": self.pi1.id})
+
+    def _start_rejudge(self, count=1):
+        config = get_camp_config(self.contest)
+        config.last_rejudges = {str(self.pi1.id): {"at": self.REJUDGED_AT.isoformat(), "count": count}}
+        config.save()
+
+    def _report(self, submission, score, date, kind="NORMAL"):
+        report = SubmissionReport.objects.create(submission=submission, kind=kind)
+        SubmissionReport.objects.filter(id=report.id).update(creation_date=date)
+        ScoreReport.objects.create(submission_report=report, score=None if score is None else IntegerScore(score))
+
+    def _rejudged(self, user, date, old, new, kind="NORMAL", pi=None):
+        """A submission scored ``old`` before the rejudge and ``new`` after it."""
+        submission = self._submit(user, pi or self.pi1, date, 0)
+        Submission.objects.filter(id=submission.id).update(score=None if new is None else IntegerScore(new))
+        self._report(submission, old, self.REJUDGED_AT - timedelta(hours=1), kind=kind)
+        self._report(submission, new, self.REJUDGED_AT + timedelta(minutes=1))
+        return submission
+
+    def _build(self):
+        return build_rejudge_report(self.contest, ProblemInstance.objects.select_related("round").get(id=self.pi1.id))
+
+    def _row(self, user):
+        return next(row for row in self._build()["rows"] if row["user"] == user)
+
+    def test_no_report_without_rejudge(self):
+        self.assertIsNone(self._build())
+
+    def test_score_change_of_counted_submission_changes_ranking(self):
+        self._set_weights(self.ranking, 1, 1)
+        self._start_rejudge(2)
+        submission = self._rejudged(self.user1, _date(1, 1), 40, 55)
+        self._rejudged(self.user1, _date(1, 2), 50, 50)
+
+        report = self._build()
+        self.assertEqual((report["rejudged"], report["count"]), (2, 2))
+        self.assertFalse(report["in_progress"])
+        self.assertEqual(report["ranking_changes_count"], 1)
+        row = report["rows"][0]
+        self.assertEqual([change["id"] for change in row["submissions"]], [submission.id])
+        self.assertEqual({part["name"]: (part["old"], part["new"]) for part in row["ranking"]["parts"]}, {"Dzienne": (50, 55), "Stałe": (50, 55)})
+        self.assertEqual(row["ranking"]["parts"][0]["new_submission"], submission.id)
+        self.assertEqual((row["ranking"]["old"], row["ranking"]["new"]), (100, 110))
+
+    def test_newer_better_submission_means_no_ranking_change(self):
+        self._set_weights(self.ranking, 0, 1)
+        self._start_rejudge()
+        self._rejudged(self.user1, _date(1, 1), 80, 60)
+        # Sent after the rejudge has started, so it is not compared, but it does count.
+        newer = self._submit(self.user1, self.pi1, self.REJUDGED_AT + timedelta(minutes=1), 100)
+        self._report(newer, 100, self.REJUDGED_AT + timedelta(minutes=2))
+
+        report = self._build()
+        self.assertEqual(report["ranking_changes_count"], 0)
+        self.assertEqual(report["rejudged"], 1)
+        self.assertEqual(len(report["rows"][0]["submissions"]), 1)
+        self.assertFalse(report["rows"][0]["ranking"]["changed"])
+
+    def test_only_comparable_submissions_are_listed(self):
+        self._start_rejudge(3)
+        self._rejudged(self.user1, _date(1, 1), 50, 50)
+        # Not judged again yet.
+        waiting = self._submit(self.user2, self.pi1, _date(1, 2), 30)
+        self._report(waiting, 30, self.REJUDGED_AT - timedelta(hours=1))
+        # Judged for the first time after the rejudge started.
+        fresh = self._submit(self.user2, self.pi1, _date(1, 3), 70)
+        self._report(fresh, 70, self.REJUDGED_AT + timedelta(minutes=1))
+
+        report = self._build()
+        self.assertEqual(report["rows"], [])
+        self.assertEqual(report["rejudged"], 1)
+        self.assertTrue(report["in_progress"])
+
+    def test_compilation_error_and_system_error(self):
+        self._start_rejudge(2)
+        self._rejudged(self.user1, _date(1, 1), None, 100)
+        self._rejudged(self.user2, _date(1, 1), 70, None)
+
+        self.assertEqual((self._row(self.user1)["ranking"]["old"], self._row(self.user1)["ranking"]["new"]), (None, 100))
+        self.assertEqual(self._row(self.user1)["submissions"][0]["old"], None)
+        self.assertEqual(self._row(self.user2)["submissions"][0]["new"], None)
+        self.assertEqual(self._build()["ranking_changes_count"], 2)
+
+    def test_old_result_of_failure_report_is_empty(self):
+        self._start_rejudge()
+        self._rejudged(self.user1, _date(1, 1), 70, 70, kind="FAILURE")
+        self.assertIsNone(self._row(self.user1)["submissions"][0]["old"])
+
+    def test_points_use_ranking_weights(self):
+        self._set_weights(self.ranking, 0, 3)
+        self._start_rejudge()
+        self._rejudged(self.user1, _date(1, 1), 10, 20)
+        change = self._row(self.user1)["ranking"]
+        self.assertEqual((change["old"], change["new"]), (30, 60))
+
+    def test_all_time_change_is_shown_for_ranking_of_round(self):
+        self.assertEqual(self.ranking.stale_weight, 0)
+        self._start_rejudge()
+        # Sent after the round, so it only counts for Stałe.
+        self._rejudged(self.user1, _date(4), 10, 20)
+        change = self._row(self.user1)["ranking"]
+        self.assertEqual([(part["name"], part["old"], part["new"]) for part in change["parts"]], [("Stałe", 10, 20)])
+        self.assertFalse(change["changed"])
+        self.assertEqual(self._build()["ranking_changes_count"], 0)
+
+    def test_daily_counts_last_submission_when_configured(self):
+        self.ranking.daily_scoring = SCORING_LAST
+        self.ranking.save()
+        self._start_rejudge(2)
+        self._submit(self.user1, self.pi1, _date(1, 1), 90)
+        self._rejudged(self.user1, _date(1, 2), 10, 20)
+        parts = {part["name"]: (part["old"], part["new"]) for part in self._row(self.user1)["ranking"]["parts"]}
+        self.assertEqual(parts, {"Dzienne": (10, 20)})
+
+    def test_user_outside_of_ranking(self):
+        self._start_rejudge()
+        self._rejudged(self.outsider, _date(1, 1), 10, 20)
+        self.assertIsNone(self._row(self.outsider)["ranking"])
+        self.assertEqual(self._build()["ranking_changes_count"], 0)
+
+    def test_problem_without_round_ranking(self):
+        self.ranking.delete()
+        self._start_rejudge()
+        self._rejudged(self.user1, _date(1, 1), 10, 20)
+        report = self._build()
+        self.assertIsNone(report["ranking"])
+        self.assertIsNone(report["rows"][0]["ranking"])
+
+    def test_view(self):
+        self.client.force_login(User.objects.get(username="test_admin"))
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+
+        self._start_rejudge(2)
+        self._rejudged(self.user1, _date(1, 1), 40, 55)
+        response = self.client.get(self.url)
+        self.assertContains(response, "#")
+        self.assertContains(response, "40 → 55")
+
+        self.client.force_login(self.user1)
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    def test_view_without_changes(self):
+        self.client.force_login(User.objects.get(username="test_admin"))
+        self._start_rejudge()
+        self._rejudged(self.user1, _date(1, 1), 40, 40)
+        self.assertContains(self.client.get(self.url), "has not changed anything")
+
+    def _rejudge(self, data=None):
+        self.client.force_login(User.objects.get(username="test_admin"))
+        url = reverse("rejudge_all_submissions_for_problem", kwargs={"contest_id": self.contest.id, "problem_instance_id": self.pi1.id})
+        with patch("oioioi.problems.controllers.ProblemController.judge"):
+            return self.client.post(url, {"post": "yes", **(data or {})})
+
+    def test_rejudging_problem_remembers_when(self):
+        submission = self._submit(self.user1, self.pi1, _date(1, 1), 40)
+        self._report(submission, 40, _date(1, 2))
+        # Cannot be compared.
+        self._submit(self.user1, self.pi1, _date(1, 3), 50)
+        self._submit(self.user1, self.pi1, _date(1, 4), 50, kind="TESTRUN")
+
+        self.assertEqual(self._rejudge().status_code, 302)
+        rejudge = get_camp_config(self.contest).last_rejudges[str(self.pi1.id)]
+        self.assertEqual(rejudge["count"], 1)
+        self.assertIsNotNone(timezone.datetime.fromisoformat(rejudge["at"]))
+
+    def test_rejudge_of_nothing_keeps_previous_report(self):
+        self._start_rejudge()
+        before = get_camp_config(self.contest).last_rejudges
+        self._rejudge()
+        self.assertEqual(get_camp_config(self.contest).last_rejudges, before)
+
+    def test_link_in_problem_actions(self):
+        self.client.force_login(User.objects.get(username="test_admin"))
+        for problem_instance in (self.pi_trial, self.pi1, self.pi2):
+            ProblemSite.objects.create(problem=problem_instance.problem, url_key=problem_instance.short_name)
+        changelist = reverse("oioioiadmin:contests_probleminstance_changelist", kwargs={"contest_id": self.contest.id})
+        self.assertNotContains(self.client.get(changelist), self.url)
+        self._start_rejudge()
+        self.assertContains(self.client.get(changelist), self.url)

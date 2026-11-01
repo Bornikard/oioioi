@@ -6,6 +6,7 @@ app_name = "czeciecamp"
 
 contest_patterns = [
     path("camp/", views.panel_view, name="czeciecamp_panel"),
+    path("camp/rejudge/<int:problem_instance_id>/", views.rejudge_report_view, name="czeciecamp_rejudge_report"),
     path("camp/round/<int:round_id>/visibility/<str:action>/", views.round_action_view, name="czeciecamp_round_action"),
     path("camp/freeze/", views.freeze_view, {"frozen": True}, name="czeciecamp_freeze"),
     path("camp/unfreeze/", views.freeze_view, {"frozen": False}, name="czeciecamp_unfreeze"),

@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Max
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
@@ -15,7 +16,7 @@ from django.views.decorators.http import require_POST
 from oioioi.base.admin import system_admin_menu_registry
 from oioioi.base.permissions import enforce_condition, is_superuser, make_request_condition
 from oioioi.contests.menu import contest_admin_menu_registry
-from oioioi.contests.models import Contest, Round
+from oioioi.contests.models import Contest, ProblemInstance, Round
 from oioioi.contests.utils import contest_exists, is_contest_basicadmin
 from oioioi.czeciecamp.controllers import CzecieCampContestController, get_freeze_date, get_last_round_end, is_frozen
 from oioioi.czeciecamp.forms import AddParticipantsForm, CampSettingsForm, CreateCampForm, FreezeDateForm, RankingForm, RoundForm
@@ -29,6 +30,7 @@ from oioioi.czeciecamp.models import (
     ordered_rounds,
     round_weights,
 )
+from oioioi.czeciecamp.rejudge_report import build_rejudge_report
 from oioioi.participants.models import Participant
 from oioioi.rankings.models import Ranking
 
@@ -42,6 +44,15 @@ CAMP_SUBMISSIONS_LIMIT = 25
 def is_czecie_camp(request):
     contest = getattr(request, "contest", None)
     return contest is not None and isinstance(contest.controller, CzecieCampContestController)
+
+
+@enforce_condition(contest_exists & is_contest_basicadmin & is_czecie_camp)
+def rejudge_report_view(request, problem_instance_id):
+    problem_instance = get_object_or_404(ProblemInstance.objects.select_related("problem", "round"), id=problem_instance_id, contest=request.contest)
+    report = build_rejudge_report(request.contest, problem_instance)
+    if report is None:
+        raise Http404
+    return TemplateResponse(request, "czeciecamp/rejudge_report.html", {"problem_instance": problem_instance, "report": report})
 
 
 def _panel_url(contest):
