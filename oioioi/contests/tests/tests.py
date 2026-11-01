@@ -1291,6 +1291,67 @@ class TestRejudgeView(TestCase):
         self.pi.refresh_from_db()
         self.assertFalse(self.pi.needs_rejudge)
 
+    def _post_rejudge(self, data):
+        with patch("oioioi.problems.controllers.ProblemController.judge") as judge:
+            response = self.client.post(self._rejudge_url(), {"post": "yes", **data})
+        return response, [call.args[1] for call in judge.call_args_list]
+
+    def test_rejudge_options_on_problem_page(self):
+        test_name = Test.objects.filter(problem_instance=self.pi, is_active=True).first().name
+        response = self.client.get(self._rejudge_url())
+        self.assertContains(response, "Rejudge submissions on all tests")
+        self.assertContains(response, "active tests which haven")
+        self.assertContains(response, "Rejudge submissions on selected tests")
+        self.assertIn("disabled", response.context["form"].fields["tests"].widget.attrs)
+        # A copy of a field would make its old value win over what was just entered.
+        self.assertContains(response, 'name="date_from"', count=1)
+
+        # The preview keeps what has been chosen.
+        response = self.client.get(self._rejudge_url(), {"rejudge_type": "SELECTED", "tests": [test_name]})
+        form = response.context["form"]
+        self.assertEqual(form["rejudge_type"].value(), "SELECTED")
+        self.assertEqual(form["tests"].value(), [test_name])
+        self.assertNotIn("disabled", form.fields["tests"].widget.attrs)
+
+    def test_rejudge_post_selected_tests(self):
+        self.pi.needs_rejudge = True
+        self.pi.save()
+        test_name = Test.objects.filter(problem_instance=self.pi, is_active=True).first().name
+
+        response, extra_args = self._post_rejudge({"rejudge_type": "SELECTED", "tests": [test_name]})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(extra_args, [{"tests_to_judge": [test_name], "rejudge_type": "SELECTED"}])
+        self.pi.refresh_from_db()
+        self.assertTrue(self.pi.needs_rejudge)
+
+        response, extra_args = self._post_rejudge({"rejudge_type": "NEW"})
+        self.assertEqual(extra_args, [{"tests_to_judge": [], "rejudge_type": "NEW"}])
+        self.pi.refresh_from_db()
+        self.assertTrue(self.pi.needs_rejudge)
+
+        response, extra_args = self._post_rejudge({"rejudge_type": "FULL"})
+        self.assertEqual(extra_args, [{"tests_to_judge": [], "rejudge_type": "FULL"}])
+        self.pi.refresh_from_db()
+        self.assertFalse(self.pi.needs_rejudge)
+
+    def test_rejudge_post_invalid_options(self):
+        for data in (
+            {"rejudge_type": "SELECTED"},
+            {"rejudge_type": "SELECTED", "tests": ["missing"]},
+            {"rejudge_type": "WRONG"},
+        ):
+            with self.subTest(data=data):
+                response, extra_args = self._post_rejudge(data)
+                self.assertContains(response, "alert-danger")
+                self.assertEqual(extra_args, [])
+
+    def test_rejudge_multiple_problems_has_no_tests_list(self):
+        extra_pi = ProblemInstance.objects.filter(contest=self.contest).exclude(id=self.pi.id).first()
+        response = self.client.get(reverse("rejudge_multiple_problems"), {"ids": f"{self.pi.id},{extra_pi.id}"})
+        self.assertContains(response, "active tests which haven")
+        self.assertNotContains(response, "Rejudge submissions on selected tests")
+        self.assertNotContains(response, "Tests:")
+
     def test_rejudge_post_partial_keeps_flag(self):
         """Rejudging a subset should NOT clear the needs_rejudge flag."""
         self.pi.needs_rejudge = True
@@ -1381,7 +1442,7 @@ class TestRejudgeTypesView(TestCase):
         post_data = {"action": "rejudge_action", "_selected_action": ["1", "2"]}
         response = self.client.post(reverse("oioioiadmin:contests_submission_changelist"), post_data)
         self.assertContains(response, "You have selected 2 submission(s) from 1 problem(s)")
-        self.assertContains(response, "Rejudge submissions on judged tests only")
+        self.assertContains(response, "Rejudge submissions on selected tests")
         self.assertContains(response, "Tests:")
 
         problem_instance = ProblemInstance.objects.get(id=2)
@@ -1392,7 +1453,8 @@ class TestRejudgeTypesView(TestCase):
         post_data["_selected_action"] = ["1", "2", "3"]
         response = self.client.post(reverse("oioioiadmin:contests_submission_changelist"), post_data)
         self.assertContains(response, "You have selected 3 submission(s) from 2 problem(s)")
-        self.assertNotContains(response, "Rejudge submissions on judged tests only")
+        self.assertNotContains(response, "Rejudge submissions on selected tests")
+        self.assertContains(response, "active tests which haven")
         self.assertNotContains(response, "Tests:")
 
 

@@ -1,0 +1,11 @@
+{% load i18n %}
+{% trans "Select type of rejudge:" %}
+<ul class="radio">
+    {{ form.rejudge_type }}
+</ul>
+{% if form.tests %}
+    {% trans "Tests:" %}
+    <ul class="checkbox list-grid" id="test_list">
+        {{ form.tests }}
+    </ul>
+{% endif %}

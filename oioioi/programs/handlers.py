@@ -175,11 +175,16 @@ def collect_tests(env, **kwargs):
             submission_report__status="ACTIVE",
         )
         tests_used = [report.test_name for report in test_reports]
+        if not tests_used:
+            # E.g. after a compilation error: no results to keep, so only a full run gives a real score.
+            rejudge_type = "FULL"
         if rejudge_type == "NEW":
             tests_to_judge = [t.name for t in Test.objects.filter(problem_instance__id=problem_instance, is_active=True).exclude(name__in=tests_used)]
-        elif rejudge_type == "JUDGED":
-            tests = Test.objects.filter(problem_instance__id=problem_instance, name__in=tests_used)
-            tests_to_judge = [t for t in tests_to_judge if t in tests_used]
+        elif rejudge_type == "SELECTED":
+            # The other tests the submission already has keep their results.
+            tests = Test.objects.filter(problem_instance__id=problem_instance, name__in=[*tests_used, *tests_to_judge])
+            existing_tests = {test.name for test in tests}
+            tests_to_judge = [t for t in tests_to_judge if t in existing_tests]
         elif rejudge_type == "FULL":
             tests_to_judge = [t.name for t in tests]
     else:

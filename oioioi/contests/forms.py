@@ -349,25 +349,20 @@ class GetUserInfoForm(forms.Form):
         self.fields["user"].hints_url = reverse("contest_user_hints", kwargs={"contest_id": request.contest.id})
 
 
-class TestsSelectionForm(forms.Form):
-    def __init__(self, request, queryset, pis_count, uses_is_active, *args, **kwargs):
+class RejudgeOptionsForm(forms.Form):
+    """Chooses how submissions are rejudged. Tests can only be picked one by
+    one when rejudging a single problem, so ``problem_instance`` is ``None``
+    for several problems.
+    """
+
+    def __init__(self, problem_instance, uses_is_active, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        problem_instance = queryset[0].problem_instance
-        tests = Test.objects.filter(problem_instance=problem_instance, is_active=True)
-
-        if uses_is_active:
-            choices = [
-                ("FULL", _("Rejudge submissions on all current active tests")),
-                (
-                    "NEW",
-                    _("Rejudge submissions on active tests which haven't been judged yet"),
-                ),
-            ]
-        else:
-            choices = [("FULL", _("Rejudge submissions on all tests"))]
-
-        if pis_count == 1:
-            choices.append(("JUDGED", _("Rejudge submissions on judged tests only")))
+        choices = [
+            ("FULL", _("Rejudge submissions on all current active tests") if uses_is_active else _("Rejudge submissions on all tests")),
+            ("NEW", _("Rejudge submissions on active tests which haven't been judged yet")),
+        ]
+        if problem_instance is not None:
+            choices.append(("SELECTED", _("Rejudge submissions on selected tests")))
 
         widget = forms.RadioSelect(attrs={"onChange": "rejudgeTypeOnChange(this)"})
         self.fields["rejudge_type"] = forms.ChoiceField(
@@ -377,12 +372,25 @@ class TestsSelectionForm(forms.Form):
 
         self.initial["rejudge_type"] = "FULL"
 
-        if pis_count == 1:
+        if problem_instance is not None:
+            tests = Test.objects.filter(problem_instance=problem_instance, is_active=True)
+            tests_selectable = self.data.get("rejudge_type") == "SELECTED"
             self.fields["tests"] = forms.MultipleChoiceField(
-                widget=forms.CheckboxSelectMultiple(attrs={"disabled": "disabled"}),
+                widget=forms.CheckboxSelectMultiple(attrs={} if tests_selectable else {"disabled": "disabled"}),
                 choices=[(test.name, test.name) for test in tests],
+                required=False,
             )
 
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("rejudge_type") == "SELECTED" and not cleaned_data.get("tests") and "tests" not in self.errors:
+            raise forms.ValidationError(_("Select at least one test."))
+        return cleaned_data
+
+
+class TestsSelectionForm(RejudgeOptionsForm):
+    def __init__(self, request, queryset, pis_count, uses_is_active, *args, **kwargs):
+        super().__init__(queryset[0].problem_instance if pis_count == 1 else None, uses_is_active, *args, **kwargs)
         self.fields["submissions"] = forms.ModelMultipleChoiceField(widget=forms.CheckboxSelectMultiple, queryset=queryset, initial=queryset)
 
 

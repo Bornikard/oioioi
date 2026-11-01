@@ -31,6 +31,7 @@ from oioioi.contests.controllers import submission_template_context
 from oioioi.contests.forms import (
     FilesMessageForm,
     GetUserInfoForm,
+    RejudgeOptionsForm,
     RoundSelectionForm,
     SubmissionForm,
     SubmissionMessageForm,
@@ -87,6 +88,7 @@ from oioioi.problems.utils import (
     query_zip,
     update_tests_from_main_pi,
 )
+from oioioi.programs.models import Test
 from oioioi.status.registry import status_registry
 
 
@@ -779,6 +781,12 @@ def rejudge_all_submissions_for_problem_view(request, problem_instance_id=None):
         if not _check_if_problem_instances_belong_to_contest(problem_instances, request.contest.id):
             raise SuspiciousOperation("Invalid problem instances")
 
+    form = RejudgeOptionsForm(
+        problem_instances[0] if len(problem_instances) == 1 else None,
+        Test.objects.filter(problem_instance__in=problem_instances, is_active=False).exists(),
+        {"rejudge_type": params.get("rejudge_type", "FULL"), "tests": params.getlist("tests")},
+    )
+
     counts_by_instance = {}
     submissions_by_instance = {}
     for problem_instance in problem_instances:
@@ -797,10 +805,12 @@ def rejudge_all_submissions_for_problem_view(request, problem_instance_id=None):
 
     selected_count = sum(count for count, _ in counts_by_instance.values())
 
-    if request.POST:
+    if request.POST and form.is_valid():
+        rejudge_type = form.cleaned_data["rejudge_type"]
+        tests = form.cleaned_data.get("tests", [])
         for problem_instance, submissions in submissions_by_instance.items():
             for submission in submissions:
-                problem_instance.controller.judge(submission, {}, is_rejudge=True)
+                problem_instance.controller.judge(submission, {"tests_to_judge": tests, "rejudge_type": rejudge_type}, is_rejudge=True)
         messages.info(
             request,
             ngettext_lazy(
@@ -812,7 +822,8 @@ def rejudge_all_submissions_for_problem_view(request, problem_instance_id=None):
         )
 
         for problem_instance, (instance_selected_count, total_count) in counts_by_instance.items():
-            if instance_selected_count == total_count:
+            # Only a full rejudge is sure to cover whatever has changed.
+            if rejudge_type == "FULL" and instance_selected_count == total_count:
                 problem_instance.needs_rejudge = False
                 problem_instance.save(update_fields=["needs_rejudge"])
 
@@ -822,6 +833,7 @@ def rejudge_all_submissions_for_problem_view(request, problem_instance_id=None):
         request,
         "contests/confirm_rejudge.html",
         {
+            "form": form,
             "count": selected_count,
             "date_from": date_from,
             "date_to": date_to,

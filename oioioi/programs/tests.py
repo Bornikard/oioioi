@@ -29,8 +29,9 @@ from oioioi.base.tests import (
 )
 from oioioi.base.utils import memoized_property
 from oioioi.base.utils.test_migrations import TestCaseMigrations
+from oioioi.contests.forms import TestsSelectionForm
 from oioioi.contests.handlers import send_notification_judged
-from oioioi.contests.models import Contest, ProblemInstance, Round, Submission
+from oioioi.contests.models import Contest, ProblemInstance, Round, Submission, SubmissionReport
 from oioioi.contests.scores import IntegerScore, ScoreValue
 from oioioi.contests.tests import PrivateRegistrationController, SubmitMixin
 from oioioi.evalmgr.tasks import create_environ
@@ -1399,6 +1400,7 @@ class TestRejudge(TestCase, SubmitFileMixin):
         tests_subset,
         expected_ok,
         expected_re,
+        before_rejudge=None,
     ):
         self.assertTrue(self.client.login(username="test_user"))
 
@@ -1432,6 +1434,8 @@ class TestRejudge(TestCase, SubmitFileMixin):
         submission.source_file.save("file.c", ContentFile(bad_code))
 
         self._set_active_tests(rejudge_active_tests, all_tests)
+        if before_rejudge:
+            before_rejudge(submission)
 
         ContestWithJudgeInfoController.judged = False
         submission.problem_instance.controller.judge(
@@ -1449,6 +1453,29 @@ class TestRejudge(TestCase, SubmitFileMixin):
             self.assertTrue((status == "RE") == (name in expected_re))
             self.assertTrue((status == "OK") == (name in expected_ok))
 
+    def test_tests_list_has_all_active_tests(self):
+        queryset = Submission.objects.filter(problem_instance__contest__isnull=False).order_by("id")
+        problem_instance = queryset[0].problem_instance
+        inactive_test = Test.objects.filter(problem_instance=problem_instance).first()
+        inactive_test.is_active = False
+        inactive_test.save()
+
+        form = TestsSelectionForm(None, queryset, 1, True)
+        names = {test.name for test in Test.objects.filter(problem_instance=problem_instance, is_active=True)}
+        self.assertEqual({name for name, _label in form.fields["tests"].choices}, names)
+
+    def test_rejudge_type_choices(self):
+        queryset = Submission.objects.filter(problem_instance__contest__isnull=False).order_by("id")
+
+        def rejudge_types(pis_count, uses_is_active):
+            form = TestsSelectionForm(None, queryset, pis_count, uses_is_active)
+            return [value for value, _label in form.fields["rejudge_type"].choices]
+
+        # New tests can appear without any test being deactivated, e.g. after a package reupload.
+        self.assertEqual(rejudge_types(1, False), ["FULL", "NEW", "SELECTED"])
+        self.assertEqual(rejudge_types(1, True), ["FULL", "NEW", "SELECTED"])
+        self.assertEqual(rejudge_types(2, False), ["FULL", "NEW"])
+
     def test_rejudge_full(self):
         self._test_rejudge(
             ["0", "1ocen", "1b", "3"],
@@ -1461,24 +1488,40 @@ class TestRejudge(TestCase, SubmitFileMixin):
 
         self._test_rejudge(["0", "1ocen"], [], "FULL", {}, [], [])
 
-    def test_rejudge_judged(self):
-        self._test_rejudge(
-            ["0", "1ocen", "1b", "3"],
-            ["0", "1ocen", "1b", "3"],
-            "JUDGED",
-            ["0", "1a", "2", "3"],
-            ["1ocen", "1b"],
-            ["0", "3"],
-        )
+    def _active_report_tests(self):
+        submission = ProgramSubmission.objects.all().latest("id")
+        reports = TestReport.objects.filter(submission_report__submission=submission, submission_report__status="ACTIVE")
+        return {report.test_name for report in reports}
 
-        self._test_rejudge(
-            ["0", "1ocen", "1b", "3"],
-            [],
-            "JUDGED",
-            ["0", "1a", "2", "3"],
-            ["1ocen", "1b"],
-            ["0", "3"],
-        )
+    def test_rejudge_selected(self):
+        judged = ["0", "1ocen", "1b", "3"]
+
+        # Tests the submission did not have can be selected, too.
+        self._test_rejudge(judged, judged, "SELECTED", ["0", "1a", "2", "3"], ["1ocen", "1b"], ["0", "1a", "2", "3"])
+        self.assertEqual(self._active_report_tests(), {"0", "1ocen", "1a", "1b", "2", "3"})
+
+        # Results of the tests which were not selected are kept, and other new tests stay out.
+        self._test_rejudge(judged, judged, "SELECTED", ["1a"], ["0", "1ocen", "1b", "3"], ["1a"])
+        self.assertEqual(self._active_report_tests(), {"0", "1ocen", "1a", "1b", "3"})
+
+        # A selected test may have disappeared from the problem in the meantime.
+        self._test_rejudge(judged, judged, "SELECTED", ["0", "missing"], ["1ocen", "1b", "3"], ["0"])
+        self.assertEqual(self._active_report_tests(), set(judged))
+
+    def test_rejudge_without_test_results_judges_all_tests(self):
+        def forget_test_results(submission):
+            # What a compilation error leaves behind.
+            TestReport.objects.filter(submission_report__submission=submission).delete()
+
+        def forget_reports(submission):
+            SubmissionReport.objects.filter(submission=submission).delete()
+
+        tests = ["0", "1ocen", "1b", "3"]
+        for rejudge_type in ("SELECTED", "NEW"):
+            for before_rejudge in (forget_test_results, forget_reports):
+                with self.subTest(rejudge_type=rejudge_type, before_rejudge=before_rejudge.__name__):
+                    self._test_rejudge(tests, tests, rejudge_type, ["1b"], [], tests, before_rejudge)
+                    self.assertEqual(self._active_report_tests(), set(tests))
 
     def test_rejudge_new(self):
         self._test_rejudge(

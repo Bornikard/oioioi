@@ -48,7 +48,6 @@ from oioioi.contests.models import (
     RoundStartDelay,
     RoundTimeExtension,
     Submission,
-    SubmissionReport,
     contest_permissions,
     submission_kinds,
 )
@@ -778,35 +777,23 @@ class SubmissionAdmin(admin.ModelAdmin):
         subs_ids = [int(x) for x in request.POST.getlist("submissions", [])]
         rejudge_type = request.POST["rejudge_type"]
         submissions = Submission.objects.in_bulk(subs_ids)
-        all_reports_exist = True
         for sub in submissions.values():
-            if not SubmissionReport.objects.filter(submission=sub, status="ACTIVE").exists():
-                all_reports_exist = False
-                break
-
-        if all_reports_exist or rejudge_type == "FULL":
-            for sub in submissions.values():
-                sub.problem_instance.controller.judge(
-                    sub,
-                    is_rejudge=True,
-                    extra_args={"tests_to_judge": tests, "rejudge_type": rejudge_type},
-                )
-
-            counter = len(submissions)
-            self.message_user(
-                request,
-                ngettext_lazy(
-                    "Queued one submission for rejudge.",
-                    "Queued %(counter)d submissions for rejudge.",
-                    counter,
-                )
-                % {"counter": counter},
+            sub.problem_instance.controller.judge(
+                sub,
+                is_rejudge=True,
+                extra_args={"tests_to_judge": tests, "rejudge_type": rejudge_type},
             )
-        else:
-            self.message_user(
-                request,
-                _("Cannot rejudge submissions due to lack of active reports for one or more submissions"),
+
+        counter = len(submissions)
+        self.message_user(
+            request,
+            ngettext_lazy(
+                "Queued one submission for rejudge.",
+                "Queued %(counter)d submissions for rejudge.",
+                counter,
             )
+            % {"counter": counter},
+        )
 
         return redirect("oioioiadmin:contests_submission_changelist")
 

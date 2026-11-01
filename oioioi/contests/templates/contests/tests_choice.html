@@ -10,16 +10,7 @@
 
 <form action="rejudge/" method="POST" class="form-list-unstyled">
     {% csrf_token %}
-    {% trans "Select type of rejudge:" %}
-    <ul class="radio">
-        {{ form.rejudge_type }}
-    </ul>
-    {% if form.tests %}
-        {% trans "Tests:" %}
-        <ul class="checkbox list-grid" id="test_list">
-            {{ form.tests }}
-        </ul>
-    {% endif %}
+    {% include "contests/rejudge_options.html" %}
     <div  class="d-none">
         {{ form.submissions }}
     </div>
