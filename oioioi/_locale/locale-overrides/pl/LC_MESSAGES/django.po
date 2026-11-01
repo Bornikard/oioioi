@@ -17,3 +17,67 @@ msgstr "Dodaj kolejny obiekt: %(verbose_name)s"
 #: tests/test_forms.py:325
 msgid "Enter a valid email address."
 msgstr "Wprowadź poprawny adres email."
+
+# Package files management and the rejudge form.
+msgid "Invalid list of changes."
+msgstr "Nieprawidłowa lista zmian."
+
+msgid "File %(path)s was changed more than once."
+msgstr "Plik %(path)s został zmieniony więcej niż raz."
+
+msgid "File %(path)s does not exist in the package."
+msgstr "Pliku %(path)s nie ma w paczce."
+
+msgid "%(path)s already exists in the package."
+msgstr "%(path)s już istnieje w paczce."
+
+msgid "Invalid file path: %(path)s."
+msgstr "Nieprawidłowa ścieżka pliku: %(path)s."
+
+msgid "No file provided for %(path)s."
+msgstr "Nie podano pliku dla %(path)s."
+
+msgid "A package cannot be left without any files."
+msgstr "Paczka nie może zostać bez plików."
+
+msgid "%(path)s is inside a path that is a file."
+msgstr "%(path)s znajduje się w ścieżce, która jest plikiem."
+
+msgid "This problem is used in too many places for its package to be modified here. Files can only be downloaded."
+msgstr "To zadanie jest używane w zbyt wielu miejscach, aby można było tu zmienić jego paczkę. Pliki można tylko pobierać."
+
+msgid "Search files"
+msgstr "Szukaj plików"
+
+msgid "Drag files from your computer onto a file to replace it, or onto a folder to add them there."
+msgstr "Przeciągnij pliki z komputera na plik, aby go podmienić, albo na folder, aby je tam dodać."
+
+msgid "Changes to save"
+msgstr "Zmiany do zapisania"
+
+msgid "No changes yet."
+msgstr "Na razie brak zmian."
+
+msgid "Save and process package"
+msgstr "Zapisz i przetwórz paczkę"
+
+msgid "Discard all"
+msgstr "Odrzuć wszystko"
+
+msgid "File content"
+msgstr "Zawartość pliku"
+
+msgid "Add to changes"
+msgstr "Dodaj do zmian"
+
+msgid "Rejudge submissions on selected tests"
+msgstr "Oceń ponownie zgłoszenia na wybranych testach"
+
+msgid "Select at least one test."
+msgstr "Wybierz co najmniej jeden test."
+
+msgid "Something about the problems has changed. If the change was trivial (like a typo) then rejudge is not needed."
+msgstr "Coś w zadaniach uległo zmianie. Jeśli zmiana była drobna (np. literówka), ponowna ocena nie jest potrzebna."
+
+msgid "Problems to be rejudged:"
+msgstr "Zadania do ponownej oceny:"

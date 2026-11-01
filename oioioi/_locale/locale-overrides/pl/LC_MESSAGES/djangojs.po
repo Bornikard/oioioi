@@ -1,0 +1,70 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: pl\n"
+"Plural-Forms: nplurals=4; plural=(n==1 ? 0 : (n%10>=2 && n%10<=4) && (n%100<12 || n%100>14) ? 1 : n!=1 && (n%10>=0 && n%10<=1) || (n%10>=5 && n%10<=9) || (n%100>=12 && n%100<=14) ? 2 : 3);\n"
+
+# Package files management.
+msgid "A folder name cannot contain slashes."
+msgstr "Nazwa folderu nie może zawierać ukośników."
+
+msgid "A folder with this name already exists: "
+msgstr "Folder o tej nazwie już istnieje: "
+
+msgid "Add files"
+msgstr "Dodaj pliki"
+
+msgid "Could not load this file."
+msgstr "Nie udało się wczytać tego pliku."
+
+msgid "Delete"
+msgstr "Usuń"
+
+msgid "Discard your edits to this file?"
+msgstr "Odrzucić zmiany w tym pliku?"
+
+msgid "Download"
+msgstr "Pobierz"
+
+msgid "Folder name:"
+msgstr "Nazwa folderu:"
+
+msgid "Folders cannot be dropped here, drop the files inside them instead."
+msgstr "Nie można tu upuszczać folderów, przeciągnij pliki z ich wnętrza."
+
+msgid "Loading..."
+msgstr "Wczytywanie..."
+
+msgid "New folder"
+msgstr "Nowy folder"
+
+msgid "No matching files."
+msgstr "Brak pasujących plików."
+
+msgid "Replace"
+msgstr "Podmień"
+
+msgid "This file is not UTF-8 text, so it cannot be shown here. Download it instead."
+msgstr "Ten plik nie jest tekstem w UTF-8, więc nie można go tu wyświetlić. Pobierz go."
+
+msgid "This name is already used in this folder."
+msgstr "Ta nazwa jest już zajęta w tym folderze."
+
+msgid "Undo"
+msgstr "Cofnij"
+
+msgid "View or edit"
+msgstr "Podgląd lub edycja"
+
+msgid "View"
+msgstr "Podgląd"
+
+msgid "You can upload at most %s files at once."
+msgstr "Naraz można wgrać najwyżej %s plików."
+
+msgid "%s file"
+msgid_plural "%s files"
+msgstr[0] "%s plik"
+msgstr[1] "%s pliki"
+msgstr[2] "%s plików"
+msgstr[3] "%s pliku"
