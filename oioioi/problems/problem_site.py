@@ -7,6 +7,7 @@ from collections import namedtuple
 from operator import itemgetter  # pylint: disable=E0611
 
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.core.files import File
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
@@ -25,7 +26,7 @@ from oioioi.contests.controllers import submission_template_context
 from oioioi.contests.forms import SubmissionFormForProblemInstance
 from oioioi.contests.models import ProblemInstance, Submission
 from oioioi.contests.utils import administered_contests
-from oioioi.problems.forms import PackageFileReuploadForm, ProblemStatementReplaceForm
+from oioioi.problems.forms import PackageChangesForm, PackageFileReuploadForm, ProblemStatementReplaceForm
 from oioioi.problems.models import (
     AggregatedAlgorithmTagProposal,
     AggregatedDifficultyTagProposal,
@@ -316,21 +317,18 @@ def problem_site_replace_statement(request, problem):
     )
 
 
-def _prepare_changed_package(request, form, archive, package_name):
-    file_path = request.POST.get("file_name", None)
-    if len(request.FILES) != 1:
-        form.add_error("file_replacement", _("File replacement not provided"))
-        return None, None
-    uploaded_file = next(request.FILES.values())
-    if uploaded_file.name != os.path.basename(file_path):
-        form.add_error(None, _("Original and replacement files must have the same name"))
-        return None, None
-
+def _prepare_changed_package(changes, archive, package_name):
     extraction_dir = tempfile.mkdtemp()
     archive.extract(to_path=extraction_dir)
-    file_path = os.path.join(extraction_dir, file_path)
-    with open(file_path, "wb") as original_file:
-        original_file.write(uploaded_file.read())
+    for change in changes:
+        file_path = os.path.join(extraction_dir, change["path"])
+        if change["op"] == "delete":
+            os.remove(file_path)
+            continue
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "wb") as changed_file:
+            for chunk in change["file"].chunks():
+                changed_file.write(chunk)
     package_dir = tempfile.mkdtemp()
     package_archive_name = os.path.join(package_dir, package_name)
     shutil.make_archive(base_name=package_archive_name, format="zip", root_dir=extraction_dir)
@@ -361,50 +359,48 @@ def problem_site_package_download_file(request, problem):
     contest = problem.contest
     archive = Archive(package.package_file)
     file_names = archive.filenames()
+    dir_names = archive.dirnames()
+    can_reupload = _problem_can_be_reuploaded(request, problem)
     if request.method == "POST":
-        form = PackageFileReuploadForm(file_names, request.POST)
+        if not can_reupload:
+            raise PermissionDenied
+        form = PackageChangesForm(file_names, dir_names, request.POST, request.FILES)
         if form.is_valid():
-            if "upload_button" in request.POST:
-                package_name = file_names[0].split(os.path.sep, 1)[0]
-                package_archive, tmpdir = _prepare_changed_package(request, form, archive, package_name)
-                if package_archive is not None:
-                    package_file = File(open(package_archive, "rb"), os.path.basename(package_archive))
-                    original_filename = package_file.name
-                    file_manager = uploaded_file_name(package_file)
-                    source = UploadedPackageSource()
-                    try:
-                        source.process_package(
-                            request,
-                            file_manager,
-                            request.user,
-                            contest,
-                            existing_problem=problem,
-                            original_filename=original_filename,
-                            visibility=problem.visibility,
-                        )
-                    except Exception as e:
-                        logger.exception(
-                            "Error processing package",
-                            extra={"omit_sentry": True},
-                        )
-                        form._errors["__all__"] = form.error_class([smart_str(e)])
-                    finally:
-                        shutil.rmtree(tmpdir)
-                    return source._redirect_response(request)
-            elif "download_button" in request.POST:
-                file_name = request.POST.get("file_name", None)
-                if file_name is None:
-                    form.add_error("file_name", _("No file selected"))
-                else:
-                    return redirect(
-                        "download_package_file",
-                        package_id=package.id,
-                        file_name=file_name,
-                    )
+            package_name = file_names[0].split(os.path.sep, 1)[0]
+            package_archive, tmpdir = _prepare_changed_package(form.cleaned_data["changes"], archive, package_name)
+            package_file = File(open(package_archive, "rb"), os.path.basename(package_archive))
+            original_filename = package_file.name
+            file_manager = uploaded_file_name(package_file)
+            source = UploadedPackageSource()
+            try:
+                source.process_package(
+                    request,
+                    file_manager,
+                    request.user,
+                    contest,
+                    existing_problem=problem,
+                    original_filename=original_filename,
+                    visibility=problem.visibility,
+                )
+                return source._redirect_response(request)
+            except Exception as e:
+                logger.exception(
+                    "Error processing package",
+                    extra={"omit_sentry": True},
+                )
+                form.add_error(None, smart_str(e))
+            finally:
+                shutil.rmtree(tmpdir)
     else:
-        form = PackageFileReuploadForm(file_names)
+        form = PackageChangesForm(file_names, dir_names)
     return TemplateResponse(
         request,
         "problems/manage-problem-package-files.html",
-        {"form": form, "can_reupload": _problem_can_be_reuploaded(request, problem)},
+        {
+            "form": form,
+            "can_reupload": can_reupload,
+            "file_sizes": archive.file_sizes(),
+            "download_url": reverse("download_package_file", kwargs={"package_id": package.id, "file_name": "PATH"}),
+            "max_files": settings.DATA_UPLOAD_MAX_NUMBER_FILES,
+        },
     )

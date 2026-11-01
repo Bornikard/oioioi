@@ -116,6 +116,9 @@ class Archive:
     def dirnames(self):
         return self._archive.dirnames()
 
+    def file_sizes(self):
+        return self._archive.file_sizes()
+
     def extracted_size(self):
         return self._archive.extracted_size()
 
@@ -138,6 +141,13 @@ class BaseArchive:
     def dirnames(self):
         """
         Return a list of the dirnames contained in the archive.
+        """
+        raise NotImplementedError()
+
+    def file_sizes(self):
+        """
+        Return a dict mapping the files contained in the archive to their
+        extracted sizes in bytes.
         """
         raise NotImplementedError()
 
@@ -202,6 +212,9 @@ class TarArchive(BaseArchive):
     def dirnames(self):
         return [tarinfo.name for tarinfo in self._archive.getmembers() if tarinfo.isdir()]
 
+    def file_sizes(self):
+        return {tarinfo.name: tarinfo.size for tarinfo in self._archive.getmembers() if tarinfo.isfile()}
+
     def extracted_size(self):
         total = 0
         for member in self._archive:
@@ -234,6 +247,9 @@ class ZipArchive(BaseArchive):
 
     def dirnames(self):
         return [zipinfo.filename for zipinfo in self._archive.infolist() if zipinfo.is_dir()]
+
+    def file_sizes(self):
+        return {zipinfo.filename: zipinfo.file_size for zipinfo in self._archive.infolist() if not zipinfo.is_dir()}
 
 
 extension_map = {

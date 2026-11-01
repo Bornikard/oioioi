@@ -1,61 +1,67 @@
-{% load i18n simple_filters %}
+{% load i18n %}
 
-<form enctype="multipart/form-data" method="post">
-    {% csrf_token %}
-        {% if form.non_field_errors %}
-            <div class="mb-3">
-                {% for error in form.non_field_errors %}
-                    <div class="alert alert-danger" role="alert">
-                        <span class="visually-hidden">{% trans "Error" %}:</span>
-                        {{ error }}
-                    </div>
-                {% endfor %}
+<div id="package-files"
+     data-download-url="{{ download_url }}"
+     data-can-edit="{{ can_reupload|yesno:'true,false' }}"
+     data-max-files="{{ max_files }}">
+    {% for error in form.non_field_errors %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+    {% endfor %}
+    {% for error in form.changes.errors %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+    {% endfor %}
+    {% if not can_reupload %}
+        <div class="alert alert-info" role="alert">
+            {% trans "This problem is used in too many places for its package to be modified here. Files can only be downloaded." %}
+        </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="{% if can_reupload %}col-lg-8{% else %}col-12{% endif %} mb-3">
+            <input id="package-files-search" type="search" class="form-control form-control-sm mb-2"
+                   placeholder="{% trans "Search files" %}" aria-label="{% trans "Search files" %}">
+            {% if can_reupload %}
+                <p class="text-muted small mb-2">
+                    {% trans "Drag files from your computer onto a file to replace it, or onto a folder to add them there." %}
+                </p>
+            {% endif %}
+            <div id="package-files-tree"></div>
+        </div>
+
+        {% if can_reupload %}
+            <div class="col-lg-4 mb-3">
+                <form id="package-files-form" class="position-sticky" style="top: 5rem" enctype="multipart/form-data" method="post">
+                    {% csrf_token %}
+                    {{ form.changes }}
+                    <h2 class="h6">{% trans "Changes to save" %} (<span id="package-changes-count">0</span>)</h2>
+                    <p id="package-changes-empty" class="text-muted small">{% trans "No changes yet." %}</p>
+                    <ul id="package-changes-list" class="list-unstyled small"></ul>
+                    <button id="package-changes-submit" type="submit" class="btn btn-primary btn-sm" disabled>
+                        {% trans "Save and process package" %}
+                    </button>
+                    <button id="package-changes-discard" type="button" class="btn btn-outline-secondary btn-sm" disabled>
+                        {% trans "Discard all" %}
+                    </button>
+                </form>
+                <input id="package-files-picker" type="file" class="d-none" aria-hidden="true" tabindex="-1">
             </div>
         {% endif %}
-
-    <div class="mb-3 {% if form.file_name.errors %}has-error{% endif %}">
-        {% if display_labels != False %}
-            <label for="{{ form.file_name.auto_id }}" class="control-label">
-                {{ form.file_name.label }}
-            </label>
-        {% endif %}
-        {{ form.file_name | add_class:"form-control" }}
-        {% for error in form.file_name.errors %}
-            <div class="{% if inline %}help-inline{% else %}help-block{% endif %}">{{ error }}</div>
-        {% endfor %}
-        {% if form.file_name.help_text %}
-            <div class="{% if inline %}help-inline{% else %}help-block{% endif %}">{{ form.file_name.help_text }}</div>
-        {% endif %}
     </div>
 
-    <div class="mb-3">
-        {% block downl_btn %}
-            <button type="submit" name="download_button" class="btn btn-primary">{% trans "Download" %}</button>
-        {% endblock %}
-    </div>
+    <dialog id="package-file-editor" class="bg-body text-body border rounded p-3 w-100" style="max-width: 60rem">
+        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+            <h2 id="package-file-editor-path" class="h6 mb-0 text-break"></h2>
+            <button type="button" class="btn-close" data-editor-close aria-label="{% trans "Close" %}"></button>
+        </div>
+        <p id="package-file-editor-message" class="text-muted small" hidden></p>
+        <textarea id="package-file-editor-text" class="form-control font-monospace" rows="24" wrap="off" spellcheck="false"
+                  aria-label="{% trans "File content" %}"></textarea>
+        <div class="d-flex justify-content-end gap-2 mt-2">
+            <button id="package-file-editor-apply" type="button" class="btn btn-primary btn-sm">{% trans "Add to changes" %}</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-editor-close>{% trans "Close" %}</button>
+        </div>
+    </dialog>
+</div>
 
-    {% if can_reupload %}
-    <div class="mb-3 {% if form.file_replacement.errors %}has-error{% endif %}">
-        {% if display_labels != False %}
-            <label for="{{ form.file_replacement.auto_id }}" class="control-label">
-                {{ form.file_replacement.label }}
-            </label>
-        {% endif %}
-        {{ form.file_replacement | add_class:"form-control" }}
-        {% for error in form.file_replacement.errors %}
-            <div class="{% if inline %}help-inline{% else %}help-block{% endif %}">{{ error }}</div>
-        {% endfor %}
-        {% if form.file_replacement.help_text %}
-            <div class="{% if inline %}help-inline{% else %}help-block{% endif %}">{{ form.file_replacement.help_text }}</div>
-        {% endif %}
-    </div>
-
-    <div class="mb-3">
-        {% block upload_btn %}
-            <button type="submit" name="upload_button" class="btn btn-primary">{% trans "Submit" %}</button>
-        {% endblock %}
-    </div>
-    {% endif %}
-</form>
-
-
+{{ file_sizes|json_script:"package-file-sizes" }}
+<script src="{{ STATIC_URL }}problems/package-files.js"></script>

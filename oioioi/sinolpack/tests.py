@@ -1,11 +1,14 @@
+import json
 import os.path
 import urllib.parse
 import zipfile
 from io import BytesIO
+from unittest import mock
 
 import pytest
 from django.conf import settings
 from django.core.files import File
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TransactionTestCase
@@ -144,7 +147,6 @@ class TestSinolPackage(TestCase, TestStreamingMixin):
         filename = get_test_filename("test_simple_package.zip")
         old_statement = "tst/doc/tstzad.pdf"
         bad_statement = get_test_filename("blank.pdf")
-        good_statement = get_test_filename("tstzad.pdf")  # copy of blank
 
         call_command("addproblem", filename)
         problem = Problem.objects.get()
@@ -160,17 +162,9 @@ class TestSinolPackage(TestCase, TestStreamingMixin):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, old_statement)
 
-        post_data = {
-            "file_name": old_statement,
-            "file_replacement": open(bad_statement, "rb"),
-            "upload_button": "",
-        }
-        response = self.client.post(url, post_data, follow=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "must have the same name")  # error
-
-        post_data["file_replacement"] = open(good_statement, "rb")
-        response = self.client.post(url, post_data, follow=True)
+        # The uploaded file's own name does not matter, the package keeps the old path.
+        with open(bad_statement, "rb") as statement_file:
+            response = self.client.post(url, {"changes": json.dumps([{"op": "replace", "path": old_statement}]), "file_0": statement_file}, follow=True)
         self.assertEqual(response.status_code, 200)
         # It is in the old and modified packages' rows and also in a filter
         self.assertContains(response, "Uploaded", 3)
@@ -179,7 +173,95 @@ class TestSinolPackage(TestCase, TestStreamingMixin):
         url = reverse("show_statement", kwargs={"statement_id": statement.id})
         response = self.client.get(url)
         content = self.streamingContent(response)
-        self.assertEqual(content, open(good_statement, "rb").read())
+        self.assertEqual(content, open(bad_statement, "rb").read())
+
+    def _package_files_setup(self):
+        call_command("addproblem", get_test_filename("test_simple_package.zip"))
+        problem = Problem.objects.get()
+        self.assertTrue(self.client.login(username="test_admin"))
+        return problem, reverse("problem_site", kwargs={"site_key": problem.problemsite.url_key}) + "?key=manage_files_problem_package"
+
+    @override_settings(CONTEST_MODE=ContestMode.neutral, USE_SINOLPACK_MAKEFILES=False)
+    def test_package_files_batch_change(self):
+        problem, url = self._package_files_setup()
+        changes = [
+            {"op": "add", "path": "tst/attachments/nested/new.txt"},
+            {"op": "delete", "path": "tst/doc/tstzad.tex"},
+            {"op": "replace", "path": "tst/prog/tstgen.cpp"},
+        ]
+        response = self.client.post(
+            url,
+            {
+                "changes": json.dumps(changes),
+                "file_0": SimpleUploadedFile("new.txt", b"added"),
+                "file_2": SimpleUploadedFile("other_name.cpp", b"// replaced"),
+            },
+            follow=True,
+        )
+        self.assertContains(response, "Uploaded", 3)
+
+        package = ProblemPackage.objects.filter(problem=problem).latest("id")
+        self.assertEqual(ProblemPackage.objects.filter(problem=problem).count(), 2)
+        with zipfile.ZipFile(BytesIO(package.package_file.read())) as archive:
+            names = archive.namelist()
+            self.assertEqual(archive.read("tst/attachments/nested/new.txt"), b"added")
+            self.assertEqual(archive.read("tst/prog/tstgen.cpp"), b"// replaced")
+        self.assertNotIn("tst/doc/tstzad.tex", names)
+        self.assertNotIn("tst/prog/other_name.cpp", names)
+        self.assertIn("tst/in/tst0.in", names)
+
+    @override_settings(CONTEST_MODE=ContestMode.neutral, USE_SINOLPACK_MAKEFILES=False)
+    def test_package_files_invalid_changes(self):
+        problem, url = self._package_files_setup()
+        file_content = b"content"
+        all_files = ["tst/config.yml", "tst/doc/tstzad.pdf", "tst/doc/tstzad.tex"]
+        all_files += [f"tst/in/tst{name}.in" for name in ("0", "1a", "1b", "1c", "2")]
+        all_files += [f"tst/out/tst{name}.out" for name in ("0", "1a", "1b", "1c", "2")]
+        all_files += ["tst/prog/tst.cpp", "tst/prog/tstgen.cpp"]
+        invalid_changes = [
+            "not json",
+            "[]",
+            '{"op": "delete"}',
+            "[1]",
+            json.dumps([{"op": "chmod", "path": "tst/config.yml"}]),
+            json.dumps([{"op": "delete", "path": "tst/missing.txt"}]),
+            json.dumps([{"op": "add", "path": "tst/config.yml"}]),
+            json.dumps([{"op": "add", "path": "tst/doc"}]),
+            json.dumps([{"op": "add", "path": "tst/../../evil.txt"}]),
+            json.dumps([{"op": "add", "path": "/etc/evil.txt"}]),
+            json.dumps([{"op": "add", "path": "other/evil.txt"}]),
+            json.dumps([{"op": "add", "path": "tst/evil\\file.txt"}]),
+            json.dumps([{"op": "add", "path": "tst/config.yml/inside.txt"}]),
+            json.dumps([{"op": "delete", "path": "tst/config.yml"}, {"op": "delete", "path": "tst/config.yml"}]),
+            json.dumps([{"op": "delete", "path": path} for path in all_files]),
+        ]
+        for changes in invalid_changes:
+            with self.subTest(changes=changes):
+                response = self.client.post(url, {"changes": changes, "file_0": SimpleUploadedFile("f", file_content)})
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "alert-danger")
+        # A replacement without a file is rejected as well.
+        response = self.client.post(url, {"changes": json.dumps([{"op": "replace", "path": "tst/config.yml"}])})
+        self.assertContains(response, "No file provided")
+        self.assertEqual(ProblemPackage.objects.filter(problem=problem).count(), 1)
+
+    @override_settings(CONTEST_MODE=ContestMode.neutral, USE_SINOLPACK_MAKEFILES=False)
+    def test_package_files_cannot_be_changed_when_reupload_forbidden(self):
+        problem, url = self._package_files_setup()
+        with mock.patch("oioioi.problems.problem_site._problem_can_be_reuploaded", return_value=False):
+            self.assertContains(self.client.get(url), "Files can only be downloaded")
+            response = self.client.post(url, {"changes": json.dumps([{"op": "delete", "path": "tst/doc/tstzad.tex"}])})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(ProblemPackage.objects.filter(problem=problem).count(), 1)
+
+    @override_settings(CONTEST_MODE=ContestMode.neutral, USE_SINOLPACK_MAKEFILES=False)
+    def test_package_file_download_of_binary_file(self):
+        problem, _url = self._package_files_setup()
+        package = ProblemPackage.objects.get(problem=problem)
+        response = self.client.get(reverse("download_package_file", kwargs={"package_id": package.id, "file_name": "tst/doc/tstzad.pdf"}))
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(get_test_filename("test_simple_package.zip")) as archive:
+            self.assertEqual(self.streamingContent(response), archive.read("tst/doc/tstzad.pdf"))
 
     def test_title_translations_in_config_yml(self):
         filename = get_test_filename("test_simple_package_translations.zip")

@@ -1,4 +1,7 @@
+import json
+import re
 from collections import OrderedDict
+from pathlib import PurePosixPath
 
 from django import forms
 from django.conf import settings
@@ -156,6 +159,73 @@ class PackageFileReuploadForm(forms.Form):
 
     def _set_field_show_always(self, field_name):
         self.fields[field_name].widget.attrs["data-submit"] = "always"
+
+
+class PackageChangesForm(forms.Form):
+    """Validates a batch of changes to the files of a problem package.
+
+    ``changes`` is a JSON list of ``{"op": ..., "path": ...}`` objects, where
+    ``op`` is ``replace``, ``add`` or ``delete``. The new content of the
+    change at index ``i`` is uploaded as the file ``file_<i>``.
+    """
+
+    changes = forms.CharField(widget=forms.HiddenInput)
+
+    def __init__(self, file_names, dir_names, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.file_names = set(file_names)
+        self.dir_names = {name.rstrip("/") for name in dir_names}
+        self.root_dir = file_names[0].split("/", 1)[0]
+
+    def _is_valid_new_path(self, path):
+        parts = path.split("/")
+        return len(parts) > 1 and parts[0] == self.root_dir and not re.search(r"[\x00-\x1f\\]", path) and not {"", ".", ".."} & set(parts)
+
+    def clean_changes(self):
+        try:
+            changes = json.loads(self.cleaned_data["changes"])
+        except ValueError:
+            raise forms.ValidationError(_("Invalid list of changes.")) from None
+        if not isinstance(changes, list) or not changes:
+            raise forms.ValidationError(_("Invalid list of changes."))
+
+        cleaned_changes = []
+        final_files = set(self.file_names)
+        seen_paths = set()
+        for index, change in enumerate(changes):
+            if not isinstance(change, dict) or not isinstance(change.get("path"), str):
+                raise forms.ValidationError(_("Invalid list of changes."))
+            operation, path = change.get("op"), change["path"]
+            if path in seen_paths:
+                raise forms.ValidationError(_("File %(path)s was changed more than once.") % {"path": path})
+            seen_paths.add(path)
+
+            if operation in ("replace", "delete") and path not in self.file_names:
+                raise forms.ValidationError(_("File %(path)s does not exist in the package.") % {"path": path})
+            if operation == "add":
+                if path in self.file_names or path in self.dir_names:
+                    raise forms.ValidationError(_("%(path)s already exists in the package.") % {"path": path})
+                if not self._is_valid_new_path(path):
+                    raise forms.ValidationError(_("Invalid file path: %(path)s.") % {"path": path})
+                final_files.add(path)
+            elif operation == "delete":
+                final_files.discard(path)
+            elif operation != "replace":
+                raise forms.ValidationError(_("Invalid list of changes."))
+
+            uploaded_file = None
+            if operation != "delete":
+                uploaded_file = self.files.get(f"file_{index}")
+                if uploaded_file is None:
+                    raise forms.ValidationError(_("No file provided for %(path)s.") % {"path": path})
+            cleaned_changes.append({"op": operation, "path": path, "file": uploaded_file})
+
+        if not final_files:
+            raise forms.ValidationError(_("A package cannot be left without any files."))
+        for path in final_files:
+            if any(str(parent) in final_files for parent in PurePosixPath(path).parents):
+                raise forms.ValidationError(_("%(path)s is inside a path that is a file.") % {"path": path})
+        return cleaned_changes
 
 
 def _localized_formset_get_initial(localized_objects):

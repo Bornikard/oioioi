@@ -1202,6 +1202,6 @@ def download_problem_package_file_view(request, package_id, file_name):
         archive.extract(to_path=dir_path)
         filepath = os.path.join(dir_path, file_name)
         if os.path.isfile(filepath):
-            return stream_file(File(open(filepath)), os.path.basename(os.path.normpath(file_name)))
+            return stream_file(File(open(filepath, "rb")), os.path.basename(os.path.normpath(file_name)))
     finally:
         shutil.rmtree(dir_path)
