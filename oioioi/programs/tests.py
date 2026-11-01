@@ -3,6 +3,7 @@ import re
 import urllib
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta  # pylint: disable=E0611
+from fractions import Fraction
 from types import SimpleNamespace
 
 import pytest
@@ -39,7 +40,7 @@ from oioioi.filetracker.tests import TestStreamingMixin
 from oioioi.problems.models import Problem
 from oioioi.programs import utils
 from oioioi.programs.controllers import ProgrammingContestController
-from oioioi.programs.handlers import collect_tests
+from oioioi.programs.handlers import collect_tests, grade_tests
 from oioioi.programs.models import (
     CheckerFormatForContest,
     CheckerFormatForProblem,
@@ -1522,6 +1523,60 @@ class TestRejudge(TestCase, SubmitFileMixin):
                 with self.subTest(rejudge_type=rejudge_type, before_rejudge=before_rejudge.__name__):
                     self._test_rejudge(tests, tests, rejudge_type, ["1b"], [], tests, before_rejudge)
                     self.assertEqual(self._active_report_tests(), set(tests))
+
+    def _collect_tests(self, submission, rejudge_type, tests_to_judge):
+        return collect_tests(
+            {
+                "is_rejudge": True,
+                "extra_args": {"rejudge_type": rejudge_type, "tests_to_judge": tests_to_judge},
+                "problem_instance_id": submission.problem_instance_id,
+                "submission_id": submission.id,
+                "language": "c",
+            }
+        )
+
+    def test_rejudge_of_user_outs_report_judges_all_tests(self):
+        """Tests of such reports have no scores, so there is nothing to keep."""
+        submission = Submission.objects.filter(problem_instance_id=1).first()
+        tests = list(Test.objects.filter(problem_instance_id=1, is_active=True))
+        SubmissionReport.objects.filter(submission=submission).delete()
+        report = SubmissionReport.objects.create(submission=submission, kind="USER_OUTS", status="ACTIVE")
+        for test in tests:
+            TestReport.objects.create(submission_report=report, test=test, test_name=test.name, test_group=test.group, status="OK", time_used=0, mem_used=0)
+
+        for rejudge_type in ("SELECTED", "NEW"):
+            with self.subTest(rejudge_type=rejudge_type):
+                env = self._collect_tests(submission, rejudge_type, [tests[0].name])
+                self.assertEqual({name for name, test in env["tests"].items() if test["to_judge"]}, {test.name for test in tests})
+
+    def test_kept_results_have_their_percentage(self):
+        """It is needed for subtask dependencies, which treat a missing one as zero."""
+        submission = Submission.objects.filter(problem_instance_id=1).first()
+        tests = list(Test.objects.filter(problem_instance_id=1, is_active=True))[:3]
+        SubmissionReport.objects.filter(submission=submission).delete()
+        report = SubmissionReport.objects.create(submission=submission, kind="NORMAL", status="ACTIVE")
+        for test, status, percentage in zip(tests, ("OK", "WA", "OK"), ((None, None), (None, None), (1, 3)), strict=True):
+            TestReport.objects.create(
+                submission_report=report,
+                test=test,
+                test_name=test.name,
+                test_group=test.group,
+                status=status,
+                time_used=0,
+                mem_used=0,
+                score=IntegerScore(10),
+                max_score=IntegerScore(10),
+                result_percentage_numerator=percentage[0],
+                result_percentage_denominator=percentage[1],
+            )
+
+        env = {
+            "submission_id": submission.id,
+            "tests": {test.name: {"to_judge": False} for test in tests},
+            "test_results": {test.name: {} for test in tests},
+        }
+        results = grade_tests(env)["test_results"]
+        self.assertEqual([Fraction(*results[test.name]["result_percentage"]) for test in tests], [100, 0, Fraction(1, 3)])
 
     def test_rejudge_new(self):
         self._test_rejudge(

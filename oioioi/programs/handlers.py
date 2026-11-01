@@ -170,10 +170,11 @@ def collect_tests(env, **kwargs):
         submission = env["submission_id"]
         rejudge_type = env["extra_args"].setdefault("rejudge_type", "FULL")
         tests_to_judge = env["extra_args"].setdefault("tests_to_judge", [])
+        # USER_OUTS reports have no scores, so they have nothing to keep.
         test_reports = TestReport.objects.filter(
             submission_report__submission__id=submission,
             submission_report__status="ACTIVE",
-        )
+        ).exclude(submission_report__kind="USER_OUTS")
         tests_used = [report.test_name for report in test_reports]
         if not tests_used:
             # E.g. after a compilation error: no results to keep, so only a full run gives a real score.
@@ -365,6 +366,11 @@ def grade_tests(env, **kwargs):
             test_result["status"] = status
             test_result["time_used"] = time_used
             test_result["mem_used"] = mem_used
+            # Subtask dependencies read it, and make_report only stores partial ones.
+            if report.result_percentage_numerator is not None:
+                test_result["result_percentage"] = (report.result_percentage_numerator, report.result_percentage_denominator)
+            else:
+                test_result["result_percentage"] = (100, 1) if status == "OK" else (0, 1)
             env["test_results"][test_name] = test_result
     return env
 
