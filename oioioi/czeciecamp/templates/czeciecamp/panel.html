@@ -271,6 +271,7 @@
     <label class="form-label" for="{{ participants_form.users.id_for_label }}">{{ participants_form.users.label }}</label>
     {{ participants_form.users.errors }}
     {{ participants_form.users }}
+    <div class="form-text">{{ participants_form.users.help_text }}</div>
     <button type="submit" class="btn btn-primary mt-2">{% trans "Add participants" %}</button>
     <a class="btn btn-link mt-2" href="{% url 'oioioiadmin:participants_participant_changelist' %}">{% trans "Manage participants" %}</a>
 </form>

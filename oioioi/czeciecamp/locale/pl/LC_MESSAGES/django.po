@@ -14,11 +14,11 @@ msgstr "Koniec"
 msgid "A round with this name already exists."
 msgstr "Runda o tej nazwie już istnieje."
 
-msgid "Usernames or emails, one per line"
-msgstr "Loginy lub adresy e-mail, po jednym w wierszu"
+msgid "Usernames, emails or full names, one per line"
+msgstr "Loginy, adresy e-mail lub imiona i nazwiska, po jednym w wierszu"
 
-msgid "Unknown users: %(users)s"
-msgstr "Nieznani użytkownicy: %(users)s"
+msgid "A name is added only if exactly one user has it. Lines that do not match are reported and stay in the field."
+msgstr "Osoba podana z imienia i nazwiska jest dodawana tylko, jeśli dokładnie jeden użytkownik tak się nazywa. Niedopasowane wiersze zostają w polu."
 
 msgid "Name"
 msgstr "Nazwa"
@@ -58,6 +58,12 @@ msgstr "Zapisano czas zamrożenia."
 
 msgid "Added %(count)d participants."
 msgstr "Dodano uczestników: %(count)d."
+
+msgid "Not added, no such user: %(users)s"
+msgstr "Nie dodano, brak takiego użytkownika: %(users)s"
+
+msgid "Not added, more than one user has this name: %(users)s"
+msgstr "Nie dodano, więcej niż jeden użytkownik tak się nazywa: %(users)s"
 
 msgid "Rankings frozen for participants."
 msgstr "Rankingi zamrożone dla uczestników."

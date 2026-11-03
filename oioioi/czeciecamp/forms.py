@@ -138,26 +138,47 @@ class FreezeDateForm(BootstrapFormMixin, forms.ModelForm):
         fields = ["freeze_date"]
 
 
+def find_users_by_name(line):
+    """Users whose "first last" (or "last first") name is the line, ignoring case.
+
+    Every split of the words is tried, so multi-word first or last names match too.
+    """
+    words = line.split()
+    query = Q(pk__in=[])
+    for i in range(1, len(words)):
+        first, last = " ".join(words[:i]), " ".join(words[i:])
+        query |= Q(first_name__iexact=first, last_name__iexact=last)
+        query |= Q(first_name__iexact=last, last_name__iexact=first)
+    return list(User.objects.filter(query).order_by("id")[:2])
+
+
 class AddParticipantsForm(BootstrapFormMixin, forms.Form):
     users = forms.CharField(
-        widget=forms.Textarea(attrs={"rows": 4, "placeholder": "login1\nlogin2\nemail@example.com"}),
-        label=_("Usernames or emails, one per line"),
+        widget=forms.Textarea(attrs={"rows": 4, "placeholder": "login1\nemail@example.com\nJan Kowalski"}),
+        label=_("Usernames, emails or full names, one per line"),
+        help_text=_("A name is added only if exactly one user has it. Lines that do not match are reported and stay in the field."),
     )
 
     def clean_users(self):
+        """Matched users; lines that did not match go to ``self.unknown`` and ``self.ambiguous``."""
         found = []
-        missing = []
+        self.unknown = []
+        self.ambiguous = []
         for line in self.cleaned_data["users"].splitlines():
-            name = line.strip()
+            name = " ".join(line.split())
             if not name:
                 continue
             user = User.objects.filter(Q(username=name) | Q(email__iexact=name)).order_by("id").first()
-            if user is None:
-                missing.append(name)
-            else:
+            if user is not None:
                 found.append(user)
-        if missing:
-            raise forms.ValidationError(_("Unknown users: %(users)s"), params={"users": ", ".join(missing)})
+                continue
+            by_name = find_users_by_name(name)
+            if len(by_name) == 1:
+                found.append(by_name[0])
+            elif by_name:
+                self.ambiguous.append(name)
+            else:
+                self.unknown.append(name)
         return found
 
 

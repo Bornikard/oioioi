@@ -170,7 +170,15 @@ def panel_view(request):
                     added += created
                 Ranking.invalidate_contest(contest)
                 messages.success(request, _("Added %(count)d participants.") % {"count": added})
-                return redirect(_panel_url(contest))
+                form = participants_form
+                if form.unknown:
+                    messages.warning(request, _("Not added, no such user: %(users)s") % {"users": ", ".join(form.unknown)})
+                if form.ambiguous:
+                    messages.warning(request, _("Not added, more than one user has this name: %(users)s") % {"users": ", ".join(form.ambiguous)})
+                if not form.unknown and not form.ambiguous:
+                    return redirect(_panel_url(contest))
+                # Leave the lines that did not match in the field to correct them.
+                participants_form = AddParticipantsForm(initial={"users": "\n".join(form.unknown + form.ambiguous)})
         else:
             raise PermissionDenied
 

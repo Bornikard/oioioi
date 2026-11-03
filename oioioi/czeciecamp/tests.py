@@ -500,9 +500,22 @@ class TestCampPanel(CampTestCase):
         self.assertTrue(self.client.login(username="test_admin"))
         response = self.client.post(self._url("czeciecamp_panel"), {"action": "participants", "users": "test_user3\nnobody"})
         self.assertContains(response, "nobody")
-        self.assertFalse(Participant.objects.filter(contest=self.contest, user=self.outsider).exists())
-        self.client.post(self._url("czeciecamp_panel"), {"action": "participants", "users": "test_user3\n"})
+        self.assertEqual(response.context["participants_form"].initial["users"], "nobody")
         self.assertTrue(Participant.objects.filter(contest=self.contest, user=self.outsider).exists())
+
+    def test_add_participants_by_name(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        Participant.objects.filter(contest=self.contest).delete()
+        users = "  test  user 3 \nUser\tTest\nTest User 2\nTest User 3\nNo Body"
+        response = self.client.post(self._url("czeciecamp_panel"), {"action": "participants", "users": users})
+        added = set(Participant.objects.filter(contest=self.contest).values_list("user__username", flat=True))
+        self.assertEqual(added, {"test_user", "test_user2", "test_user3"})
+        self.assertEqual(response.context["participants_form"].initial["users"], "No Body")
+
+        User.objects.create_user("namesake", first_name="Test", last_name="User")
+        response = self.client.post(self._url("czeciecamp_panel"), {"action": "participants", "users": "Test User"})
+        self.assertContains(response, "more than one user")
+        self.assertFalse(Participant.objects.filter(contest=self.contest, user__username="namesake").exists())
 
     def _round_data(self, prefix, name, start, end="", is_trial=False, counted=True):
         data = {f"{prefix}-name": name, f"{prefix}-start_date": start, f"{prefix}-end_date": end, f"{prefix}-is_trial": str(is_trial)}
