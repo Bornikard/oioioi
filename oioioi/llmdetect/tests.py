@@ -663,6 +663,22 @@ class TestGeneration(LLMDetectTestCase):
         self.assertEqual(job.status, GenerationJob.FAILED)
         self.assertIn("declined", job.error)
 
+    def test_generator_survives_database_errors(self):
+        from django.db import DatabaseError
+
+        from oioioi.llmdetect.management.commands import llmdetect_generator
+
+        class Stop(Exception):
+            pass
+
+        with (
+            patch.object(llmdetect_generator, "next_request", side_effect=DatabaseError("no such table")),
+            patch.object(llmdetect_generator.time, "sleep", side_effect=Stop) as sleep,
+            self.assertRaises(Stop),
+        ):
+            call_command("llmdetect_generator", stdout=StringIO())
+        sleep.assert_called_once_with(llmdetect_generator.ERROR_PAUSE)
+
     def test_jobs_left_running_are_resumed(self):
         job = self._job(count=2, status=GenerationJob.RUNNING, produced=1)
         with patch("oioioi.llmdetect.generation.requests.post", return_value=_chat_response("int main(){}")) as post:
