@@ -1,3 +1,4 @@
+import os
 from collections import Counter
 
 from django.conf import settings
@@ -5,6 +6,7 @@ from django.contrib import messages
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
@@ -16,11 +18,13 @@ from oioioi.contests.menu import contest_admin_menu_registry
 from oioioi.contests.models import ProblemInstance
 from oioioi.contests.utils import contest_exists, is_contest_admin
 from oioioi.llmdetect.explain import SIGNAL_LABELS, habit_rows, profile_features, signal_rows
-from oioioi.llmdetect.forms import DecisionForm, GenerateForm, ReferenceForm, SettingsForm
-from oioioi.llmdetect.generation import PROMPTS, provider_rows, providers, statement_text
-from oioioi.llmdetect.models import GenerationJob, LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, get_config, mark_dirty
+from oioioi.llmdetect.forms import BulkReferencesForm, DecisionForm, PromptsForm, ReferenceForm, SettingsForm
+from oioioi.llmdetect.models import LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, get_config, mark_dirty
+from oioioi.llmdetect.prompts import PROMPTS, prompts_file, statement_text
 from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, read_source, update_if_needed, user_rankings
 from oioioi.programs.models import ProgramSubmission
+
+SCRIPT_PATH = os.path.join(os.path.dirname(__file__), "tools", "llm_references.py")
 
 # Shown as "profile uncertain" below this confidence.
 LOW_CONFIDENCE = 0.25
@@ -111,12 +115,34 @@ def _references_url(contest, problem_id=None):
     return f"{url}?problem={problem_id}" if problem_id else url
 
 
-def _with_waiting(jobs, rows):
-    """Marks queued jobs whose provider cannot be asked yet."""
-    waiting = {row["name"]: row["ready_at"] for row in rows}
-    for job in jobs:
-        job.waiting_until = waiting.get(job.provider) if job.status == GenerationJob.QUEUED else None
-    return jobs
+def _download(content, filename, content_type):
+    response = HttpResponse(content, content_type=content_type)
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+def _save_references(request, references):
+    """Stores parsed references, skipping code already stored for the problem."""
+    existing = set(LLMReferenceSolution.objects.filter(problem_instance__contest=request.contest).values_list("problem_instance_id", "source"))
+    added = skipped = 0
+    for reference in references:
+        key = (reference["problem_instance"].id, reference["source"])
+        if key in existing:
+            skipped += 1
+            continue
+        existing.add(key)
+        LLMReferenceSolution.objects.create(
+            problem_instance=reference["problem_instance"],
+            model_name=reference["model"],
+            prompt_variant=reference["prompt"],
+            filename=f"bulk_line_{reference['line']}.cpp",
+            source=reference["source"],
+            added_by=request.user,
+        )
+        added += 1
+    if added:
+        mark_dirty(request.contest)
+    return added, skipped
 
 
 @enforce_condition(contest_exists & is_contest_admin)
@@ -124,10 +150,12 @@ def references_view(request):
     contest = request.contest
     problem = request.GET.get("problem")
     action = request.POST.get("action", "upload")
-    form = ReferenceForm(contest=contest, initial={"problem_instance": problem})
-    generate_form = GenerateForm(contest=contest, initial={"problem_instance": problem})
+    # Two forms have a problem field: keep their HTML ids apart.
+    form = ReferenceForm(contest=contest, initial={"problem_instance": problem}, auto_id="one-%s")
+    prompts_form = PromptsForm(contest=contest, initial={"problem_instance": problem})
+    bulk_form = BulkReferencesForm(contest=contest, initial={"default_problem": problem}, auto_id="bulk-%s")
     if request.method == "POST" and action == "upload":
-        form = ReferenceForm(request.POST, request.FILES, contest=contest)
+        form = ReferenceForm(request.POST, request.FILES, contest=contest, auto_id="one-%s")
         if form.is_valid():
             data = form.cleaned_data
             for filename, source in data["sources"]:
@@ -142,55 +170,69 @@ def references_view(request):
             mark_dirty(contest)
             messages.success(request, _("Added %(count)d references.") % {"count": len(data["sources"])})
             return redirect(_references_url(contest, data["problem_instance"].id))
-    elif request.method == "POST" and action == "generate":
-        generate_form = GenerateForm(request.POST, contest=contest)
-        if generate_form.is_valid():
-            data = generate_form.cleaned_data
-            jobs = 0
-            for choice in data["models"]:
-                provider, model = choice.split(":", 1)
-                for prompt in data["prompts"]:
-                    GenerationJob.objects.create(
-                        problem_instance=data["problem_instance"],
-                        provider=provider,
-                        model=model,
-                        prompt_variant=prompt,
-                        count=data["count"],
-                        statement=data["statement"],
-                        created_by=request.user,
-                    )
-                    jobs += 1
-            messages.success(request, _("Queued %(count)d generation jobs.") % {"count": jobs})
-            return redirect(_references_url(contest, data["problem_instance"].id) + "#generate")
+    elif request.method == "POST" and action == "bulk":
+        bulk_form = BulkReferencesForm(request.POST, request.FILES, contest=contest, auto_id="bulk-%s")
+        if bulk_form.is_valid():
+            added, skipped = _save_references(request, bulk_form.cleaned_data["references"])
+            message = _("Added %(count)d references.") % {"count": added}
+            if skipped:
+                message += " " + _("Skipped %(count)d already stored.") % {"count": skipped}
+            messages.success(request, message)
+            return redirect(_references_url(contest, problem) + "#bulk")
+    elif request.method == "POST" and action == "prompts":
+        prompts_form = PromptsForm(request.POST, contest=contest)
+        if prompts_form.is_valid():
+            data = prompts_form.cleaned_data
+            pi = data["problem_instance"]
+            content = prompts_file(contest, {pi.short_name: data["statement"]}, data["prompts"])
+            return _download(content, f"prompts-{contest.id}-{pi.short_name}.json", "application/json")
     elif request.method == "POST":
         raise PermissionDenied
     elif problem and request.GET.get("statement"):
         pi = get_object_or_404(ProblemInstance, id=problem, contest=contest)
-        try:
-            text = statement_text(pi)
-        except Exception:
-            text = ""
+        text = _statement_or_empty(pi)
         if not text:
             messages.warning(request, _("Could not read the statement of this problem; paste its text."))
-        generate_form = GenerateForm(contest=contest, initial={"problem_instance": pi.id, "statement": text})
+        prompts_form = PromptsForm(contest=contest, initial={"problem_instance": pi.id, "statement": text})
 
-    rows = provider_rows() if providers() else []
     references = LLMReferenceSolution.objects.filter(problem_instance__contest=contest).select_related("problem_instance")
-    jobs = GenerationJob.objects.filter(problem_instance__contest=contest).select_related("problem_instance")
     if problem:
         references = references.filter(problem_instance_id=problem)
-        jobs = jobs.filter(problem_instance_id=problem)
     context = {
         "form": form,
-        "generate_form": generate_form,
+        "prompts_form": prompts_form,
+        "bulk_form": bulk_form,
         "references": references,
-        "jobs": _with_waiting(list(jobs[:30]), rows),
-        "providers_configured": bool(providers()),
-        "provider_rows": rows,
         "prompts": [(key, label, instruction) for key, (label, instruction) in PROMPTS.items()],
         "problem": problem,
     }
     return TemplateResponse(request, "llmdetect/references.html", context)
+
+
+def _statement_or_empty(pi):
+    try:
+        return statement_text(pi)
+    except Exception:
+        return ""
+
+
+@enforce_condition(contest_exists & is_contest_admin)
+def all_prompts_view(request):
+    """Prompts for every problem whose statement can be read, for the script."""
+    contest = request.contest
+    statements = {}
+    for pi in ProblemInstance.objects.filter(contest=contest).order_by("round__start_date", "short_name"):
+        text = _statement_or_empty(pi)
+        if text:
+            statements[pi.short_name] = text
+    content = prompts_file(contest, statements, list(PROMPTS))
+    return _download(content, f"prompts-{contest.id}.json", "application/json")
+
+
+@enforce_condition(contest_exists & is_contest_admin)
+def script_view(request):
+    with open(SCRIPT_PATH, encoding="utf-8") as file:
+        return _download(file.read(), "llm_references.py", "text/x-python")
 
 
 @require_POST

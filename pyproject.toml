@@ -33,7 +33,6 @@ dependencies = [
     "Werkzeug",
     "setuptools>=61.0",
     "requests>=2.32,<2.33",
-    "anthropic>=2.3,<3", # llmdetect: generating reference solutions with Claude
     "fpdf>=1.7,<1.8",
     "unicodecsv>=0.14,<0.15",
     "dnslib>=0.9,<0.10",

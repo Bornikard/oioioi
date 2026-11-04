@@ -9,6 +9,8 @@ contest_patterns = [
     path("llmdetect/recompute/", views.recompute_view, name="llmdetect_recompute"),
     path("llmdetect/settings/", views.settings_view, name="llmdetect_settings"),
     path("llmdetect/references/", views.references_view, name="llmdetect_references"),
+    path("llmdetect/references/prompts.json", views.all_prompts_view, name="llmdetect_all_prompts"),
+    path("llmdetect/references/llm_references.py", views.script_view, name="llmdetect_script"),
     path("llmdetect/references/<int:reference_id>/delete/", views.delete_reference_view, name="llmdetect_delete_reference"),
     path("llmdetect/user/<int:user_id>/", views.user_view, name="llmdetect_user"),
 ]

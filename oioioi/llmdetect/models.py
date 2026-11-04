@@ -2,7 +2,6 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from django.utils.translation import pgettext_lazy
 
 from oioioi.contests.models import Contest, ProblemInstance, Round, Submission
 
@@ -150,53 +149,3 @@ class ReviewDecision(models.Model):
 
     class Meta:
         ordering = ("-date", "-id")
-
-
-class GenerationJob(models.Model):
-    """A request to generate LLM references for a problem, done by the
-    ``llmdetect_generator`` daemon.
-    """
-
-    QUEUED = "queued"
-    RUNNING = "running"
-    DONE = "done"
-    FAILED = "failed"
-    STATUSES = (
-        (QUEUED, pgettext_lazy("llmdetect", "queued")),
-        (RUNNING, pgettext_lazy("llmdetect", "running")),
-        (DONE, pgettext_lazy("llmdetect", "done")),
-        (FAILED, pgettext_lazy("llmdetect", "failed")),
-    )
-
-    problem_instance = models.ForeignKey(ProblemInstance, related_name="+", on_delete=models.CASCADE)
-    provider = models.CharField(max_length=100)
-    model = models.CharField(max_length=200)
-    prompt_variant = models.CharField(max_length=50)
-    count = models.PositiveIntegerField()
-    # Exactly the statement text that is sent, as approved by the staff.
-    statement = models.TextField()
-    status = models.CharField(max_length=16, choices=STATUSES, default=QUEUED)
-    produced = models.PositiveIntegerField(default=0)
-    error = models.TextField(blank=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
-    created_at = models.DateTimeField(default=timezone.now)
-    started_at = models.DateTimeField(null=True, blank=True)
-    finished_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        ordering = ("-id",)
-
-
-class ProviderState(models.Model):
-    """Requests made to an LLM provider on its current quota day, and
-    whether it asked to wait.
-    """
-
-    provider = models.CharField(max_length=100, unique=True)
-    day = models.DateField()
-    requests_today = models.PositiveIntegerField(default=0)
-    last_request_at = models.DateTimeField(null=True, blank=True)
-    paused_until = models.DateTimeField(null=True, blank=True)
-    # Refusals in a row; after a few, the provider waits for its daily reset.
-    strikes = models.PositiveIntegerField(default=0)
-    last_error = models.TextField(blank=True)

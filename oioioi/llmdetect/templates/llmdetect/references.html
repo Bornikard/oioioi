@@ -16,21 +16,16 @@
 <h1>{% trans "LLM references" %}</h1>
 <p class="small text-muted">{% blocktrans %}Before the round, get tens of solutions per problem from the models participants use and with prompts that imitate them. Keep wrong solutions too: their mistakes are a strong fingerprint. Only problem statements go to external models, never participants' code.{% endblocktrans %}</p>
 
-<h2 class="h4 mt-4" id="generate">{% trans "Generate with LLMs" %}</h2>
-{% if not providers_configured %}
 <div class="alert alert-secondary small">
-    {% blocktrans %}No models are configured. Add <code>LLMDETECT_PROVIDERS</code> to the settings (see the module's README): any OpenAI-compatible API (OpenRouter, Google Gemini, Groq, Mistral, a local Ollama, OpenAI...) or Anthropic. Without them you can still copy the prompts below into any chat and add the answers by hand.{% endblocktrans %}
+    {% blocktrans %}This server never asks any LLM itself. Copy a prompt into a chat, or download the prompts for the script and run it on your computer with your own API keys; then add the answers below.{% endblocktrans %}
 </div>
-{% else %}
-<div class="alert alert-warning small">
-    {% blocktrans %}Free tiers of some providers may use what you send to train their models. Before the camp the statements are secret: prefer paid tiers that do not train on your data, or a model running on your own server, for unpublished problems.{% endblocktrans %}
-</div>
-{% endif %}
-<form method="get" action="#generate" class="row g-2 align-items-end mb-2">
+
+<h2 class="h4 mt-4" id="prompts">{% trans "Prompts" %}</h2>
+<form method="get" action="#prompts" class="row g-2 align-items-end mb-2">
     <div class="col-md-4">
         <label class="form-label" for="load-problem">{% trans "Problem" %}</label>
         <select name="problem" id="load-problem" class="form-select">
-            {% for pi in generate_form.fields.problem_instance.queryset %}
+            {% for pi in prompts_form.fields.problem_instance.queryset %}
             <option value="{{ pi.id }}"{% if problem == pi.id|stringformat:"d" %} selected{% endif %}>{{ pi }}</option>
             {% endfor %}
         </select>
@@ -41,49 +36,47 @@
 </form>
 <form method="post" class="row g-2 mb-3">
     {% csrf_token %}
-    <input type="hidden" name="action" value="generate">
-    {{ generate_form.non_field_errors }}
-    <div class="col-md-4">{{ generate_form.problem_instance.label_tag }} {{ generate_form.problem_instance }} {{ generate_form.problem_instance.errors }}</div>
-    {% if providers_configured %}<div class="col-md-4">{{ generate_form.count.label_tag }} {{ generate_form.count }} {{ generate_form.count.errors }}</div>{% endif %}
+    <input type="hidden" name="action" value="prompts">
+    {{ prompts_form.non_field_errors }}
+    <div class="col-md-4">{{ prompts_form.problem_instance.label_tag }} {{ prompts_form.problem_instance }} {{ prompts_form.problem_instance.errors }}</div>
     <div class="col-12">
-        {{ generate_form.statement.label_tag }} {{ generate_form.statement }}
-        <div class="form-text">{{ generate_form.statement.help_text }}</div>
-        {{ generate_form.statement.errors }}
+        {{ prompts_form.statement.label_tag }} {{ prompts_form.statement }}
+        <div class="form-text">{{ prompts_form.statement.help_text }}</div>
+        {{ prompts_form.statement.errors }}
     </div>
     <div class="col-12">
-        <span class="small me-1">{% trans "Copy the prompt to paste into a chat:" %}</span>
+        <span class="small me-1">{% trans "Copy a prompt to paste into a chat:" %}</span>
         {% for key, label, instruction in prompts %}
         <button type="button" class="btn btn-sm btn-outline-secondary mb-1 js-copy-prompt" data-instruction="{{ instruction }}" title="{{ instruction }}">{{ label }}</button>
         {% endfor %}
-        <div class="form-text">{% trans "Then paste the whole answer under Add by hand; only its code is kept. Name the chat and the prompt there." %}</div>
+        <div class="form-text">{% trans "Then paste the whole answer below; only its code is kept." %}</div>
     </div>
-    {% if providers_configured %}
-    <div class="col-md-6 llm-checks small">
-        {{ generate_form.models.label_tag }}
-        <label class="ms-2 text-muted"><input type="checkbox" class="js-all-models"> {% trans "all" context "llmdetect" %}</label>
-        {{ generate_form.models }} {{ generate_form.models.errors }}
-    </div>
-    <div class="col-md-6 llm-checks small">
-        {{ generate_form.prompts.label_tag }} {{ generate_form.prompts }} {{ generate_form.prompts.errors }}
+    <div class="col-12 llm-checks small">
+        {{ prompts_form.prompts.label_tag }} {{ prompts_form.prompts }} {{ prompts_form.prompts.errors }}
         <details class="mt-1"><summary class="text-muted">{% trans "What the prompts say" %}</summary>
             <ul class="small">{% for key, label, instruction in prompts %}<li><strong>{{ label }}</strong>: {{ instruction }}</li>{% endfor %}</ul>
         </details>
     </div>
-    <div class="col-12"><button type="submit" class="btn btn-primary">{% trans "Generate" context "llmdetect" %}</button>
-        <span class="form-text">{% trans "Requests go to whichever provider may be asked, within each one's limits; a provider that runs out waits for its reset. Refresh this page to see the progress." %}</span></div>
-    {% endif %}
+    <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
+        <button type="submit" class="btn btn-primary">{% trans "Download these prompts for the script" %}</button>
+        <a class="btn btn-outline-secondary" href="{% url 'llmdetect_all_prompts' contest_id=contest.id %}">{% trans "Download prompts of all problems" %}</a>
+        <a class="btn btn-outline-secondary" href="{% url 'llmdetect_script' contest_id=contest.id %}">{% trans "Download the script" %}</a>
+    </div>
 </form>
+<details class="small mb-3">
+    <summary>{% trans "How to use the script" %}</summary>
+    <ol class="mt-2">
+        <li>{% trans "Download the script and a prompts file (all problems use the statements as read from their files; check them first, or download problem by problem with the statement edited above)." %}</li>
+        <li>{% trans "Create the configuration, then fill in your API keys as environment variables and the models you want:" %} <code>python3 llm_references.py --example-config &gt; providers.json</code></li>
+        <li>{% trans "Check the model names:" %} <code>python3 llm_references.py --list-models</code></li>
+        <li>{% trans "Run it (here 2 answers per model and prompt):" %} <code>python3 llm_references.py prompts-{{ contest.id }}.json -n 2</code></li>
+        <li>{% trans "Upload the references.txt it writes under Add many. Out of quota or interrupted, run the same command again later: it goes on where it stopped." %}</li>
+    </ol>
+</details>
 {% trans "Copied" context "llmdetect" as copied_label %}
 <script>
 (function () {
     var statement = document.getElementById("id_statement");
-    function copy(text, done) {
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
-        } else {
-            fallback(text, done);
-        }
-    }
     function fallback(text, done) {
         var area = document.createElement("textarea");
         area.value = text;
@@ -95,9 +88,16 @@
         document.body.removeChild(area);
         done();
     }
+    function copy(text, done) {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+        } else {
+            fallback(text, done);
+        }
+    }
     document.querySelectorAll(".js-copy-prompt").forEach(function (button) {
         button.addEventListener("click", function () {
-            // The same text the generator sends: the instruction, a blank line, the statement.
+            // The same text as in the downloaded prompts: the instruction, a blank line, the statement.
             var text = button.dataset.instruction + "\n\n" + statement.value.trim();
             copy(text, function () {
                 var label = button.textContent;
@@ -106,55 +106,31 @@
             });
         });
     });
-    var all = document.querySelector(".js-all-models");
-    if (all) {
-        all.addEventListener("change", function () {
-            document.querySelectorAll("input[name='models']").forEach(function (box) { box.checked = all.checked; });
-        });
-    }
 })();
 </script>
 
-{% if provider_rows %}
-<div class="table-responsive">
-<table class="table table-sm small align-middle">
-    <thead><tr><th>{% trans "Provider" context "llmdetect" %}</th><th>{% trans "Models" context "llmdetect" %}</th><th title="{% trans 'Requests made on the current quota day of the provider.' %}">{% trans "Today" context "llmdetect" %}</th><th>{% trans "Next request" %}</th><th></th></tr></thead>
-    <tbody>
-    {% for row in provider_rows %}
-        <tr>
-            <td>{{ row.name }}</td>
-            <td>{{ row.models }}</td>
-            <td>{{ row.requests }}{% if row.limit %} / {{ row.limit }}{% endif %}</td>
-            <td>{% if row.ready_at %}{{ row.ready_at|date:"d.m H:i" }}{% else %}{% trans "now" context "llmdetect" %}{% endif %}</td>
-            <td class="text-muted">{{ row.error|truncatechars:120 }}</td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
-</div>
-{% endif %}
+<h2 class="h4 mt-4" id="bulk">{% trans "Add many" %}</h2>
+<p class="small text-muted">{% blocktrans %}Each reference starts with a line like the ones below and goes on until the next one. The script writes this format; it is easy to write by hand too. A whole chat answer can follow the line: only its code is kept. Code already stored for the problem is skipped.{% endblocktrans %}</p>
+<pre class="small llm-code">### reference problem=abc model="ChatGPT free" prompt=polish
+#include &lt;bits/stdc++.h&gt;
+...
+### reference problem=abc model=duck.ai prompt=student
+Here is the solution:
+```cpp
+...
+```</pre>
+<form method="post" enctype="multipart/form-data" class="row g-2 mb-4">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="bulk">
+    {% if bulk_form.non_field_errors %}<div class="col-12"><div class="alert alert-danger small mb-0">{% for error in bulk_form.non_field_errors %}<div>{{ error }}</div>{% endfor %}{% trans "Nothing was added; fix the text and add it again." %}</div></div>{% endif %}
+    <div class="col-12">{{ bulk_form.text.label_tag }} {{ bulk_form.text }}</div>
+    <div class="col-md-6">{{ bulk_form.file.label_tag }} {{ bulk_form.file }}</div>
+    <div class="col-md-6">{{ bulk_form.default_problem.label_tag }} {{ bulk_form.default_problem }}</div>
+    <div class="col-12"><button type="submit" class="btn btn-primary">{% trans "Add" %}</button>
+        <span class="form-text">{% trans "Large outputs: upload the file rather than pasting it." %}</span></div>
+</form>
 
-{% if jobs %}
-<div class="table-responsive">
-<table class="table table-sm small align-middle">
-    <thead><tr><th>{% trans "Problem" %}</th><th>{% trans "Model" %}</th><th>{% trans "Prompt" %}</th><th>{% trans "Done" context "llmdetect" %}</th><th>{% trans "Status" context "llmdetect" %}</th><th></th></tr></thead>
-    <tbody>
-    {% for job in jobs %}
-        <tr>
-            <td>{{ job.problem_instance.short_name }}</td>
-            <td>{{ job.provider }} – {{ job.model }}</td>
-            <td>{{ job.prompt_variant }}</td>
-            <td>{{ job.produced }} / {{ job.count }}</td>
-            <td>{% if job.status == "failed" %}<span class="text-danger">{{ job.get_status_display }}</span>{% elif job.status == "done" %}<span class="text-success">{{ job.get_status_display }}</span>{% elif job.waiting_until %}{% blocktrans with time=job.waiting_until|date:"d.m H:i" %}waiting until {{ time }}{% endblocktrans %}{% else %}{{ job.get_status_display }}{% endif %}</td>
-            <td class="text-muted">{{ job.error|truncatechars:160 }}</td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
-</div>
-{% endif %}
-
-<h2 class="h4 mt-4">{% trans "Add by hand" %}</h2>
+<h2 class="h4 mt-4">{% trans "Add one" %}</h2>
 <form method="post" enctype="multipart/form-data" class="row g-2 mb-4">
     {% csrf_token %}
     <input type="hidden" name="action" value="upload">

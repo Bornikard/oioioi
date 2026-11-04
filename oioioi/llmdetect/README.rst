@@ -21,8 +21,9 @@ Setup
    from opening a statement to submitting is known. Without it, time is
    counted from the start of the round.
 3. Before each round, add LLM solutions of its problems on the *LLM
-   references* page (contest admin menu, *LLM detection*), or import them
-   with ``manage.py llmdetect_import_references CONTEST DIR``, where
+   references* page (contest admin menu, *LLM detection*; see *Getting
+   references* below), or import them with ``manage.py
+   llmdetect_import_references CONTEST DIR``, where
    ``DIR/<problem short name>/<model>__<prompt>__<n>.cpp`` are the files.
    Generate tens per problem with the models participants really use and
    prompts that imitate a participant ("short, no comments, like a
@@ -36,52 +37,43 @@ The panel is for contest admins only (not basic admins). After the camp,
 ``manage.py llmdetect_purge CONTEST`` deletes the data, keeping anonymized
 decisions for calibration.
 
-Generating references
----------------------
+Getting references
+------------------
 
-The *LLM references* page can ask LLMs for solutions: pick a problem,
-*Load statement* (text extracted from its PDF/HTML/zip statement), check
-and edit the text, choose models, prompt styles (plain, in Polish, like a
-high-school student, like an olympiad competitor, disguised) and how many
-solutions each. Exactly the text in the box, with a one-line instruction,
-is sent; participants' code never is. Jobs run in the background, in the
-``llmdetect-generator`` supervisor program (``manage.py
-llmdetect_generator``; ``--once`` stops when nothing can be done now). Each
-answer's longest code block becomes a reference.
+The server never contacts any LLM. On the *LLM references* page:
 
-The generator makes one request at a time, to whichever provider may be
-asked now, so the free limits of all configured providers add up. Each
-provider can have ``min_interval`` (seconds between requests),
-``daily_limit`` (requests per quota day) and ``reset_utc_hour`` (when its
-quota day starts). A provider answering 429 waits for the time it gives
-(``Retry-After`` and rate-limit reset headers), or with growing pauses and,
-after a few in a row, until its daily reset; its jobs stay queued and go on
-by themselves. The page shows each provider's requests today and when it
-can be asked next. ``manage.py llmdetect_models [provider] [--free]``
-lists the models each provider offers.
+* *Load statement* puts the text of a problem's statement (from its
+  PDF/HTML/zip/txt file) in a box to check and edit. The *Copy* buttons put
+  a prompt (one of five styles: plain, in Polish, like a high-school
+  student, like an olympiad competitor, disguised) on the clipboard, to
+  paste into any chat.
+* The prompts can also be downloaded as a JSON file, for one problem (with
+  the edited statement) or for all problems, for ``tools/llm_references.py``
+  (also downloadable from the page). The script runs on a staff member's
+  computer, needs only the Python standard library (plus ``anthropic`` for
+  Claude) and the staff member's own API keys in ``providers.json``. It asks
+  any OpenAI-compatible API (free tiers of OpenRouter, Gemini, Groq,
+  Mistral, GitHub Models, NVIDIA, Cloudflare, a local Ollama, paid APIs) and
+  Claude, one request at a time from whichever provider may be asked, within
+  each one's ``min_interval`` and ``daily_limit``; a provider refusing with
+  429 waits or is left for the next run. Answers are written as they come in
+  the bulk format; run again, it goes on where it stopped.
+* *Add many* takes text in the bulk format (pasted or uploaded)::
 
-Without any provider, or for chats without an API, the *Copy* buttons put
-the exact prompt (instruction and statement) on the clipboard to paste into
-a chat; the answer is then added under *Add by hand*.
+    ### reference problem=abc model="ChatGPT free" prompt=polish
+    <code, or a whole chat answer: only its longest code block is kept>
+    ### reference problem=xyz model=groq/openai/gpt-oss-120b prompt=student
+    ...
 
-Models are configured in ``LLMDETECT_PROVIDERS`` (an example is in the
-settings template). Two kinds of providers:
-
-* ``"type": "openai"``: any OpenAI-compatible chat completions API, given
-  ``base_url``, ``api_key`` and ``models``. That covers free tiers
-  (OpenRouter's ``:free`` models, Google Gemini, Groq, Mistral), paid APIs
-  (OpenAI, DeepSeek, paid tiers of the same) and a model on your own
-  machine (Ollama, vLLM, llama.cpp server). ``min_interval`` spaces the
-  requests to stay within free-tier limits; 429 answers are retried.
-* ``"type": "anthropic"``: Claude through the official ``anthropic`` SDK;
-  declined requests fall back server-side to another Claude model.
+  ``problem`` is a short name (or a default problem is chosen on the form),
+  ``model`` and ``prompt`` are labels. Nothing is added when any entry has
+  an error; code already stored for the problem is skipped.
+* *Add one* takes a single solution (files or pasted code).
 
 Free tiers have low daily limits and may use what is sent to train models
 (Google states this for the free Gemini API tier). Statements of a camp
 are secret until it starts, so for unpublished problems use paid tiers
-that do not train on your data, or a local model. Consumer chat apps
-(the free ChatGPT, Claude or Gemini websites) have no API and cannot be
-used; their answers can still be pasted on the page by hand.
+that do not train on your data, or a local model.
 
 How it works
 ------------

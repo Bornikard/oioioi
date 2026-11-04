@@ -1,26 +1,43 @@
 # LLM detection: updating a running server and setting it up
 
 This guide takes a server that runs this repository with `docker-compose.yml`
-(the Czecie camp production setup) to the version with `oioioi.llmdetect`. It
-covers enabling the module, generating LLM reference solutions with free (and
-optionally paid) models, and using it during a camp.
+(the Czecie camp production setup) to the version with `oioioi.llmdetect`, and
+then shows how the staff get LLM reference solutions on their own computers.
 
-All commands are run on the server, in the directory with `docker-compose.yml`
-and `.env`, unless said otherwise.
+The server itself never contacts any LLM and needs no API keys. It gives the
+staff the prompts, and takes the answers back: pasted, or uploaded in a simple
+text format that the included script writes.
+
+Server commands are run on the server, in the directory with
+`docker-compose.yml` and `.env`.
 
 ## What the update changes
 
-- A new Django app, `oioioi.llmdetect`, with 4 migrations (new tables only;
+- A new Django app, `oioioi.llmdetect`, with 2 migrations (new tables only;
   existing tables are not touched).
-- A new Python dependency, `anthropic`, so the Docker image has to be rebuilt.
-- A new background program, `llmdetect-generator`, started by supervisor in the
-  `web` container when the app is enabled.
-- `docker-compose.yml` passes the API keys of LLM providers from `.env` to the
-  `web` container (empty when not set).
-- A "LLM detection" button in the camp panel and an item in the contest admin
+- An "LLM detection" button in the camp panel and an item in the contest admin
   menu, both for full contest admins only (not basic admins).
+- No new dependencies, programs or settings beyond enabling the app.
 
-## 1. Before you start
+## 1. Already deployed the earlier version with the server-side generator?
+
+Skip this section if you never ran the version of this branch whose page had
+a "Generate" button and whose settings had `LLMDETECT_PROVIDERS`.
+
+That version had two more migrations (`0003_generationjob`,
+`0004_providerstate`) that no longer exist. Remove their tables **before**
+pulling the new code, while the old code is still there:
+
+```bash
+docker compose exec web ./manage.py migrate llmdetect 0002
+```
+
+Then, from `$SIO_DATA_DIR/settings.py`, delete the `LLMDETECT_PROVIDERS` block,
+and from `.env` delete the provider API keys (`OPENROUTER_API_KEY`,
+`GEMINI_API_KEY`, ...). The server does not need them any more; keep the keys
+for the script on your own computer (section 7).
+
+## 2. Before you start
 
 1. Do it outside a running round: the site is down for a minute while the
    containers restart.
@@ -36,7 +53,7 @@ and `.env`, unless said otherwise.
    docker compose exec -T db pg_dump -U oioioi oioioi > ~/oioioi-backup-$(date +%F).sql
    ```
 
-## 2. Get the new code
+## 3. Get the new code
 
 If the pull request is merged into `czecie-camp`:
 
@@ -48,11 +65,11 @@ git checkout czecie-camp
 git pull origin czecie-camp
 ```
 
-## 3. Enable the module in settings
+## 4. Enable the module in settings
 
 Edit `settings.py` in your data directory (`$SIO_DATA_DIR/settings.py`, the
-directory set in `.env`). It is mounted into the container, so it is not part
-of the image and the rebuild does not change it.
+directory set in `.env`). It is mounted into the container, so the rebuild
+does not change it.
 
 1. In `INSTALLED_APPS`, next to `'oioioi.czeciecamp',`, add:
 
@@ -68,159 +85,15 @@ of the image and the rebuild does not change it.
       'oioioi.llmdetect.middleware.ProblemViewMiddleware',
    ```
 
-3. At the end of the file, add the providers that generate reference
-   solutions (section 4 explains the accounts and keys). Keep only the
-   providers you will have a key for; a provider without a key fails every
-   request with "HTTP 401". The model ids were current in November 2026;
-   section 6 shows how to check them.
-
-   ```python
-   # LLM detection: models that generate reference solutions from problem statements.
-   # Check the model ids with:  docker compose exec web ./manage.py llmdetect_models
-   LLMDETECT_PROVIDERS = {
-       # ~20 requests/min, ~50/day (1000/day after a one-time $10 top-up).
-       "openrouter": {
-           "type": "openai",
-           "base_url": "https://openrouter.ai/api/v1",
-           "api_key": os.environ.get("OPENROUTER_API_KEY", ""),
-           "models": [
-               "cohere/north-mini-code:free",
-               "poolside/laguna-m.1:free",
-               "openrouter/free",  # a random free model each time
-           ],
-           "min_interval": 4,
-           "max_tokens": 8000,
-           "daily_limit": 50,  # 1000 after topping up
-       },
-       # Free tier on Flash models; Google may use free-tier input to train models.
-       "gemini": {
-           "type": "openai",
-           "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-           "api_key": os.environ.get("GEMINI_API_KEY", ""),
-           "models": ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemma-4-31b-it"],
-           "min_interval": 6,
-           "reset_utc_hour": 8,  # midnight Pacific
-       },
-       "groq": {
-           "type": "openai",
-           "base_url": "https://api.groq.com/openai/v1",
-           "api_key": os.environ.get("GROQ_API_KEY", ""),
-           "models": ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "llama-3.3-70b-versatile"],
-           "min_interval": 3,
-           "max_tokens": 8000,
-       },
-       # Free "Experiment" plan (~2 requests/min); you must allow Mistral to train on your data.
-       "mistral": {
-           "type": "openai",
-           "base_url": "https://api.mistral.ai/v1",
-           "api_key": os.environ.get("MISTRAL_API_KEY", ""),
-           "models": ["codestral-latest", "devstral-medium-latest", "mistral-medium-latest"],
-           "min_interval": 35,
-       },
-       # A time-limited free trial, ~5 requests/min.
-       "cerebras": {
-           "type": "openai",
-           "base_url": "https://api.cerebras.ai/v1",
-           "api_key": os.environ.get("CEREBRAS_API_KEY", ""),
-           "models": ["gpt-oss-120b", "qwen-3.8-27b"],
-           "min_interval": 13,
-       },
-       # ~50/day for these models, 8k input / 4k output tokens.
-       "github": {
-           "type": "openai",
-           "base_url": "https://models.github.ai/inference",
-           "api_key": os.environ.get("GITHUB_MODELS_TOKEN", ""),
-           "models": ["openai/gpt-4.1", "openai/gpt-5-mini"],
-           "min_interval": 7,
-           "max_tokens": 4000,
-           "daily_limit": 50,
-       },
-       # ~40 requests/min shared by all models.
-       "nvidia": {
-           "type": "openai",
-           "base_url": "https://integrate.api.nvidia.com/v1",
-           "api_key": os.environ.get("NVIDIA_API_KEY", ""),
-           "models": ["moonshotai/kimi-k2.6", "meta/llama-3.3-70b-instruct", "qwen/qwen2.5-coder-32b-instruct"],
-           "min_interval": 2,
-       },
-       # 10,000 "neurons" a day (reset 00:00 UTC); big models use them up in a few dozen requests.
-       "cloudflare": {
-           "type": "openai",
-           "base_url": "https://api.cloudflare.com/client/v4/accounts/" + os.environ.get("CLOUDFLARE_ACCOUNT_ID", "") + "/ai/v1",
-           "api_key": os.environ.get("CLOUDFLARE_API_TOKEN", ""),
-           "models": ["@cf/openai/gpt-oss-120b", "@cf/qwen/qwen3.8-27b", "@cf/moonshotai/kimi-k2.7-code"],
-       },
-       # Paid, if you want them (they do not train on your data by default):
-       # "openai": {
-       #     "type": "openai",
-       #     "base_url": "https://api.openai.com/v1",
-       #     "api_key": os.environ.get("OPENAI_API_KEY", ""),
-       #     "models": [],
-       # },
-       # "anthropic": {
-       #     "type": "anthropic",
-       #     "api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
-       #     "models": ["claude-opus-5-5"],
-       # },
-   }
-   ```
-
-   `settings.py` already imports `os.path`, so `os.environ` works there.
-
-   What the per-provider options mean:
-
-   | Option | Meaning |
-   |---|---|
-   | `models` | Model ids to offer on the page; an empty list means the provider is never used. |
-   | `min_interval` | Seconds between two requests to this provider (to stay under per-minute limits). |
-   | `daily_limit` | Optional: stop after this many requests per quota day. |
-   | `reset_utc_hour` | Hour (UTC) when the provider's quota day starts; default 0. |
-   | `max_tokens` | Longest answer to ask for; some free models allow less than the default 16000. |
-
-   You do not need `daily_limit` to be exact: a provider that answers "too
-   many requests" is paused until its retry time or its daily reset anyway,
-   and its jobs go on by themselves afterwards.
-
-## 4. Create the provider accounts and keys
-
-Each free API needs its own account; the free quota belongs to that account.
-Most need no credit card, some ask for a phone number. Make one account per
-provider: several accounts on one provider to get more quota usually breaks its
-terms. You do not need all of them; every one adds its daily quota.
-
-| Provider | Where to get a key | Variable in `.env` |
-|---|---|---|
-| OpenRouter | openrouter.ai → Settings → Keys | `OPENROUTER_API_KEY` |
-| Google Gemini | aistudio.google.com → Get API key (Google account) | `GEMINI_API_KEY` |
-| Groq | console.groq.com → API Keys | `GROQ_API_KEY` |
-| Mistral | console.mistral.ai → choose the free "Experiment" plan (phone verification) → API Keys | `MISTRAL_API_KEY` |
-| Cerebras | cloud.cerebras.ai → API Keys (free trial) | `CEREBRAS_API_KEY` |
-| GitHub Models | github.com → Settings → Developer settings → fine-grained token with "Models: read" | `GITHUB_MODELS_TOKEN` |
-| NVIDIA | build.nvidia.com → NVIDIA Developer account (phone verification) → API key | `NVIDIA_API_KEY` |
-| Cloudflare | dash.cloudflare.com → API token with the "Workers AI" permission; the account ID is shown in the dashboard | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
-| OpenAI (paid) | platform.openai.com → API keys | `OPENAI_API_KEY` |
-| Anthropic (paid) | platform.claude.com → API keys | `ANTHROPIC_API_KEY` |
-
-Add the keys to `.env` (next to `docker-compose.yml`; never commit it), e.g.:
-
-```
-GROQ_API_KEY=gsk_...
-GEMINI_API_KEY=...
-```
-
-`.env.example` lists all the variables. `docker-compose.yml` passes them to the
-`web` container, where the generator runs.
-
 ## 5. Rebuild, migrate, restart
 
-1. Build the new image (the code and the `anthropic` dependency are baked in):
+1. Build the new image (the code is copied into it):
 
    ```bash
    docker compose build web
    ```
 
-2. Apply the migrations with the new image before starting it, so that the
-   generator finds its tables when it starts:
+2. Apply the migrations:
 
    ```bash
    docker compose run --rm web ./manage.py migrate
@@ -232,83 +105,179 @@ GEMINI_API_KEY=...
    docker compose up -d
    ```
 
-4. Check that everything runs. `llmdetect-generator` should be `RUNNING`:
+4. If the camp already has submissions, analyse them once (otherwise the first
+   opening of the panel does it, which can take a while):
 
    ```bash
-   docker compose exec web ./manage.py supervisor status
+   docker compose exec web ./manage.py llmdetect_update <contest_id>
    ```
 
-   Its logs are in the container: one line per request in
-   `llmdetect-generator.log`, errors in `llmdetect-generator-err.log`:
-
-   ```bash
-   docker compose exec web tail -n 50 /sio2/deployment/logs/llmdetect-generator.log
-   ```
-
-   ```bash
-   docker compose exec web tail -n 50 /sio2/deployment/logs/llmdetect-generator-err.log
-   ```
-
-## 6. Check the model ids
-
-```bash
-docker compose exec web ./manage.py llmdetect_models
-```
-
-It prints, for every configured provider, the models it offers now: `*` marks
-the ones in your settings, `!` marks configured ids the provider no longer
-offers. Replace the `!` ids with ones from the list (for OpenRouter add `--free`
-to see only free models), then restart `web` so the settings are read again:
-
-```bash
-docker compose restart web
-```
-
-A provider that prints "cannot list models" has a wrong key or address.
-
-## 7. First test
+## 6. Check it works
 
 1. Log in as a superuser or a full contest admin of a camp.
-2. Open the camp panel → **LLM detection** (or the contest admin menu →
-   **Wykrywanie LLM**).
-3. Go to **Referencje LLM**.
-4. Pick a problem whose statement is already public, press **Wczytaj treść**,
-   tick **all** models, one prompt style, count 1, and press **Generuj**.
-5. Refresh after a minute or two: each job should be `gotowe` and references
-   should appear below. A failed job shows the provider's answer:
-   - `HTTP 401` / `403`: wrong key, or the key lacks a permission.
-   - `HTTP 404`: the model id does not exist (see section 6).
-   - `HTTP 400` mentioning tokens: lower `max_tokens` for that provider.
-   - waiting until a time: the provider's limit is used up; it goes on by itself.
+2. Open the camp panel → **LLM detection** (in Polish: **Wykrywanie LLM**), or
+   the same item in the contest admin menu.
+3. Open **Referencje LLM**, pick a problem and press **Wczytaj treść**: the text
+   of its statement should appear in the box.
 
-The table above the jobs shows, for each provider, its requests today and when
-it can be asked next.
+## 7. Getting reference solutions
 
-If the camp already has submissions, analyse them once (otherwise the first
-opening of the panel does it, which can take a while):
+References are LLM solutions of each problem; the closer a participant's code
+is to one of them, the higher the risk. Get tens per problem, from the models
+participants use, in several prompt styles, before each round. Keep wrong
+answers too: their mistakes are a strong fingerprint.
 
-```bash
-docker compose exec web ./manage.py llmdetect_update <contest_id>
-```
+On the **Referencje LLM** page, first **Wczytaj treść** (load the statement),
+check the text and remove anything that must not leave the camp. Then use one
+or both of the ways below.
+
+### A. By hand, from chat websites
+
+For chats without an API (free ChatGPT, Claude, Gemini, Duck.ai, ...):
+
+1. Press one of the **copy** buttons (one per prompt style): the exact prompt
+   (instruction and statement) goes to the clipboard.
+2. Paste it into the chat.
+3. Paste the whole answer back, either under **Dodaj jedno** (one solution,
+   with the chat's name in "Model"), or collect many in a text file in the
+   format below and add them at once under **Dodaj wiele**:
+
+   ```
+   ### reference problem=abc model="ChatGPT free" prompt=polish
+   <the whole answer; only its code block is kept>
+   ### reference problem=abc model=duck.ai prompt=student
+   <the whole answer>
+   ```
+
+   `problem` is the short name of the problem (or choose a default problem on
+   the form and leave it out); `model` and `prompt` are labels for you. Values
+   with spaces go in quotes.
+
+### B. With the script, on your own computer
+
+The script asks the free (and, if you want, paid) APIs of LLM providers with
+your own keys, and writes the answers in the format above. It uses the free
+limits of all your providers side by side, and continues where it stopped
+when run again.
+
+#### Once: install and configure
+
+1. Install Python 3.10 or newer. For Claude only, also run `pip install anthropic`.
+2. On the **Referencje LLM** page, press **Pobierz skrypt** and save
+   `llm_references.py` in a new folder.
+3. In that folder, create the configuration:
+
+   ```bash
+   python3 llm_references.py --example-config > providers.json
+   ```
+
+4. Create accounts and API keys at the providers you want (each free; one
+   account per provider; several accounts on one provider to get more quota
+   usually breaks its terms). Most need no credit card, some ask for a phone
+   number:
+
+   | Provider | Where to get a key | Environment variable |
+   |---|---|---|
+   | OpenRouter | openrouter.ai → Settings → Keys | `OPENROUTER_API_KEY` |
+   | Google Gemini | aistudio.google.com → Get API key | `GEMINI_API_KEY` |
+   | Groq | console.groq.com → API Keys | `GROQ_API_KEY` |
+   | Mistral | console.mistral.ai → free "Experiment" plan (phone verification) → API Keys | `MISTRAL_API_KEY` |
+   | Cerebras | cloud.cerebras.ai → API Keys (free trial) | `CEREBRAS_API_KEY` |
+   | GitHub Models | github.com → Settings → Developer settings → fine-grained token with "Models: read" | `GITHUB_MODELS_TOKEN` |
+   | NVIDIA | build.nvidia.com → NVIDIA Developer account (phone verification) → API key | `NVIDIA_API_KEY` |
+   | Cloudflare | dash.cloudflare.com → API token with the "Workers AI" permission | `CLOUDFLARE_API_TOKEN` |
+   | Anthropic (paid) | platform.claude.com → API keys | `ANTHROPIC_API_KEY` |
+
+   You do not need all of them; every one adds its daily quota. Providers whose
+   variable is not set are skipped.
+
+5. Set the keys as environment variables in the terminal where you run the
+   script. Linux and macOS:
+
+   ```bash
+   export GROQ_API_KEY=gsk_...
+   ```
+
+   Windows (PowerShell):
+
+   ```powershell
+   $env:GROQ_API_KEY = "gsk_..."
+   ```
+
+   (To keep them between sessions, put the `export` lines in `~/.bashrc` or
+   `~/.zshrc`, or use "Edit environment variables for your account" on
+   Windows.) Instead of a variable, `providers.json` may hold the key itself
+   as `"api_key": "..."`; then do not share that file.
+
+6. For Cloudflare, replace `<ACCOUNT_ID>` in its `base_url` in
+   `providers.json` with your account ID (shown in the Cloudflare dashboard).
+
+7. Check the model names, which change often:
+
+   ```bash
+   python3 llm_references.py --list-models
+   ```
+
+   For every provider with a key it prints the models it offers: `*` marks the
+   ones in `providers.json`, `!` marks names in `providers.json` the provider
+   no longer offers. Fix the `"models"` lists in `providers.json`. Prefer
+   bigger coding-capable models: they are what participants use.
+
+   The options of a provider in `providers.json`:
+
+   | Option | Meaning |
+   |---|---|
+   | `base_url` | Address of an OpenAI-compatible API. |
+   | `api_key_env` / `api_key` | Name of the variable with the key / the key itself. |
+   | `models` | Model names to ask; empty or missing skips the provider. |
+   | `min_interval` | Seconds between two requests to this provider. |
+   | `daily_limit` | Stop after this many requests in one run. |
+   | `max_tokens` | Longest answer to ask for. |
+   | `type` | `"anthropic"` for Claude; anything else is OpenAI-compatible. |
+
+   A model on your own machine (Ollama, nothing leaves your computer) is
+   `{"base_url": "http://localhost:11434/v1", "models": ["<model>"]}`.
+
+#### Before each round: run it
+
+1. On the **Referencje LLM** page, download the prompts:
+   - **Pobierz prompty wszystkich zadań**: all problems at once, with the
+     statements as read from their files;
+   - or, after **Wczytaj treść** and checking the text, **Pobierz te prompty
+     dla skryptu**: one problem with the statement as edited, and only the
+     prompt styles ticked.
+2. Run the script with the downloaded file (here 2 answers per model and
+   prompt style):
+
+   ```bash
+   python3 llm_references.py prompts-<contest>.json -n 2
+   ```
+
+   It prints each answer as it comes and writes them to `references.txt`. Useful
+   options: `--providers groq,gemini`, `--problems abc,xyz`,
+   `--only-prompts plain,student`, `-o other.txt`.
+
+3. On the **Referencje LLM** page, under **Dodaj wiele**, upload
+   `references.txt` (or paste it if it is small) and press **Dodaj**. Answers
+   already stored are skipped, so uploading the same file again after a later
+   run adds only the new ones. If any entry has an error (e.g. an unknown
+   problem), nothing is added and the errors are listed.
+
+When a provider's free quota runs out, the script says so and leaves its
+answers for the next run; run the same command the next day and it asks only
+for what is missing. Ctrl+C stops it without losing what it wrote.
+
+Rough free capacity with all the providers above: a few hundred to a thousand
+answers a day. With 5 prompt styles and ~20 models, 2 answers each is about 200
+answers per problem, so start a few days before the camp, or use fewer
+models and styles per problem.
 
 ## 8. Using it at a camp
 
-Before the camp:
-
-- In **Referencje LLM**, generate references for every problem, several per
-  model and prompt style (plain, in Polish, like a high-school student, like an
-  olympiad competitor, disguised). Free limits come to a few hundred to a
-  thousand requests a day across all providers; start a few days ahead.
-- For chats without an API (free ChatGPT, Duck.ai, ...): the **Copy** buttons
-  put the exact prompt on the clipboard; paste the whole answer under
-  **Dodaj ręcznie** (only its code is kept) and name the chat in "Model".
 - In the panel settings, tick the rounds written under supervision without
   internet, if there are any: their code anchors each participant's style.
 - Mention the automatic analysis in the camp rules (GDPR: purpose and basis;
   for minors also inform the parents).
-
-During the camp:
-
 - The **review queue** orders participants by risk; it is recomputed when the
   panel is opened and there are new submissions (**Przelicz** forces it).
 - A participant's page explains each signal, shows their code next to the
@@ -317,42 +286,40 @@ During the camp:
   score is never a proof. Record the decision; a confirmed submission becomes a
   reference for its problem. Disqualifications go through the existing
   disqualification mechanism.
+- After the camp, delete the data (decisions are kept anonymized):
 
-After the camp, delete the data (decisions are kept anonymized):
-
-```bash
-docker compose exec web ./manage.py llmdetect_purge <contest_id>
-```
+  ```bash
+  docker compose exec web ./manage.py llmdetect_purge <contest_id>
+  ```
 
 ## 9. Privacy
 
-- Participants' code is never sent anywhere; only the statement text you see
-  in the box (and a one-line instruction) goes to the models.
+- Participants' code is never sent anywhere. Only statements leave the camp,
+  and only from the staff's computers, in prompts they can read.
 - Free tiers may use what they get to train models (Google says so for the
   free Gemini API; Mistral's free plan requires agreeing to it). Statements of
   a camp are secret until it starts: for unpublished problems use paid tiers
-  that do not train on your data, or a model on your own machine (Ollama:
-  `"type": "openai"`, `"base_url": "http://<host>:11434/v1"`).
+  that do not train on your data, or a local model.
 - Risk scores are visible only to full contest admins.
 
 ## 10. Troubleshooting
 
 - **No "LLM detection" in the menu:** you are a basic admin, or
   `'oioioi.llmdetect'` is not in `INSTALLED_APPS` (restart `web` after editing
-  `settings.py`).
+  `settings.py`: `docker compose restart web`).
 - **"Problem statement views are not logged"** on the panel: the middleware
-  line from section 3 is missing; timing then counts from the round start.
+  line from section 4 is missing; timing then counts from the round start.
 - **"Could not read the statement":** the statement is a scanned PDF or an
   unusual format; paste its text into the box.
-- **Jobs stay "w kolejce" and nothing happens:** check that the generator runs
-  (section 5, step 4). Start it with:
-
-  ```bash
-  docker compose exec web ./manage.py supervisor start llmdetect-generator
-  ```
-
+- **Uploading fails or the page reports a too large request:** upload the file
+  instead of pasting it.
+- **The script says "skipped, ... is not set":** that provider's environment
+  variable is not set in this terminal.
+- **The script reports `HTTP 401`/`403`:** wrong key, or the key lacks a
+  permission; `HTTP 404`: the model name does not exist (`--list-models`);
+  `HTTP 400` mentioning tokens: lower `max_tokens` for that provider.
 - **The panel is slow the first time:** it analyses all existing submissions
-  once; run `llmdetect_update` (section 7) instead.
+  once; run `llmdetect_update` (section 5) instead.
 
 ## 11. Going back
 
@@ -363,8 +330,7 @@ docker compose exec web ./manage.py llmdetect_purge <contest_id>
    docker compose exec web ./manage.py migrate llmdetect zero
    ```
 
-2. Remove `'oioioi.llmdetect'`, the middleware line and `LLMDETECT_PROVIDERS`
-   from `settings.py`.
+2. Remove `'oioioi.llmdetect'` and the middleware line from `settings.py`.
 3. Return to the noted version and rebuild:
 
    ```bash

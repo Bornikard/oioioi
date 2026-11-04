@@ -459,44 +459,40 @@ msgstr "Albo wklej kod"
 msgid "A whole chat answer can be pasted: only its code block is kept."
 msgstr "Można wkleić całą odpowiedź z czatu: zostanie tylko blok kodu."
 
-msgid "Statement sent to the models"
-msgstr "Treść wysyłana do modeli"
+msgid "Statement in the prompts"
+msgstr "Treść w promptach"
 
-msgid "Exactly this text is sent, with a short instruction. Check it, and remove anything that must not leave the server."
-msgstr "Wysyłany jest dokładnie ten tekst, z krótkim poleceniem. Sprawdź go i usuń wszystko, co nie może opuścić serwera."
-
-msgctxt "llmdetect"
-msgid "Models"
-msgstr "Modele"
+msgid "The prompts are this text with a short instruction. Check it, and remove anything that must not be sent to an LLM."
+msgstr "Prompty to ten tekst z krótkim poleceniem. Sprawdź go i usuń wszystko, czego nie wolno wysłać do LLM."
 
 msgid "Prompts"
 msgstr "Prompty"
 
-msgid "Solutions per model and prompt"
-msgstr "Rozwiązań na model i prompt"
+msgid "Paste"
+msgstr "Wklej"
+
+msgid "Or upload a file"
+msgstr "Albo wyślij plik"
+
+msgid "Problem for entries without problem="
+msgstr "Zadanie dla wpisów bez problem="
 
 msgid "Choose files or paste code."
 msgstr "Wybierz pliki albo wklej kod."
+
+msgid "Paste the references or choose a file."
+msgstr "Wklej referencje albo wybierz plik."
+
+msgid "The file is too large."
+msgstr "Plik jest za duży."
 
 #, python-format
 msgid "%(name)s is too large."
 msgstr "%(name)s jest za duży."
 
-msgctxt "llmdetect"
-msgid "Plain"
-msgstr "Zwykły"
-
-msgid "In Polish"
-msgstr "Po polsku"
-
-msgid "Like a high-school student"
-msgstr "Jak licealista"
-
-msgid "Like an olympiad competitor"
-msgstr "Jak olimpijczyk"
-
-msgid "Disguised"
-msgstr "Zamaskowane"
+#, python-format
+msgid "…and %(count)d more errors."
+msgstr "…i jeszcze %(count)d błędów."
 
 msgid "LLM detection settings"
 msgstr "Ustawienia wykrywania LLM"
@@ -553,20 +549,38 @@ msgid "note"
 msgstr "notatka"
 
 msgctxt "llmdetect"
-msgid "queued"
-msgstr "w kolejce"
+msgid "Plain"
+msgstr "Zwykły"
 
-msgctxt "llmdetect"
-msgid "running"
-msgstr "w toku"
+msgid "In Polish"
+msgstr "Po polsku"
 
-msgctxt "llmdetect"
-msgid "done"
-msgstr "gotowe"
+msgid "Like a high-school student"
+msgstr "Jak licealista"
 
-msgctxt "llmdetect"
-msgid "failed"
-msgstr "błąd"
+msgid "Like an olympiad competitor"
+msgstr "Jak olimpijczyk"
+
+msgid "Disguised"
+msgstr "Zamaskowane"
+
+msgid "There is text before the first \"### reference\" line."
+msgstr "Przed pierwszym wierszem „### reference” jest tekst."
+
+msgid "No \"### reference\" lines found."
+msgstr "Nie znaleziono wierszy „### reference”."
+
+#, python-format
+msgid "Line %(line)d: no code after the line."
+msgstr "Wiersz %(line)d: brak kodu po wierszu."
+
+#, python-format
+msgid "Line %(line)d: no problem %(problem)s in this contest."
+msgstr "Wiersz %(line)d: brak zadania %(problem)s w tym konkursie."
+
+#, python-format
+msgid "Line %(line)d: no problem given, and no default problem chosen."
+msgstr "Wiersz %(line)d: nie podano zadania i nie wybrano domyślnego."
 
 msgid "LLM detection"
 msgstr "Wykrywanie LLM"
@@ -597,8 +611,8 @@ msgid "Added %(count)d references."
 msgstr "Dodano referencje: %(count)d."
 
 #, python-format
-msgid "Queued %(count)d generation jobs."
-msgstr "Dodano zadania generowania: %(count)d."
+msgid "Skipped %(count)d already stored."
+msgstr "Pominięto już zapisane: %(count)d."
 
 msgid "Could not read the statement of this problem; paste its text."
 msgstr "Nie udało się odczytać treści zadania; wklej jej tekst."
@@ -663,35 +677,59 @@ msgstr[0] "%(counter)s referencja"
 msgstr[1] "%(counter)s referencje"
 msgstr[2] "%(counter)s referencji"
 
-msgid "Generate with LLMs"
-msgstr "Generowanie przez LLM"
-
 msgid "Load statement"
 msgstr "Wczytaj treść"
 
-msgid "Copy the prompt to paste into a chat:"
+msgid "Copy a prompt to paste into a chat:"
 msgstr "Skopiuj prompt do wklejenia w czacie:"
 
-msgid "Then paste the whole answer under Add by hand; only its code is kept. Name the chat and the prompt there."
-msgstr "Potem wklej całą odpowiedź w „Dodaj ręcznie”; zostanie tylko kod. Podaj tam nazwę czatu i promptu."
+msgid "Then paste the whole answer below; only its code is kept."
+msgstr "Potem wklej całą odpowiedź poniżej; zostanie tylko kod."
 
 msgid "What the prompts say"
 msgstr "Co mówią prompty"
 
-msgid "Requests go to whichever provider may be asked, within each one's limits; a provider that runs out waits for its reset. Refresh this page to see the progress."
-msgstr "Zapytania trafiają do dostawcy, którego można teraz zapytać, w granicach jego limitów; dostawca, któremu skończył się limit, czeka na odnowienie. Odśwież stronę, żeby zobaczyć postęp."
+msgid "Download these prompts for the script"
+msgstr "Pobierz te prompty dla skryptu"
 
-msgid "Requests made on the current quota day of the provider."
-msgstr "Zapytania w bieżącym dniu limitu dostawcy."
+msgid "Download prompts of all problems"
+msgstr "Pobierz prompty wszystkich zadań"
 
-msgid "Next request"
-msgstr "Następne zapytanie"
+msgid "Download the script"
+msgstr "Pobierz skrypt"
 
-msgid "Add by hand"
-msgstr "Dodaj ręcznie"
+msgid "How to use the script"
+msgstr "Jak używać skryptu"
+
+msgid "Download the script and a prompts file (all problems use the statements as read from their files; check them first, or download problem by problem with the statement edited above)."
+msgstr "Pobierz skrypt i plik z promptami („wszystkie zadania” używa treści odczytanych z plików; najpierw je sprawdź albo pobieraj zadanie po zadaniu z treścią poprawioną powyżej)."
+
+msgid "Create the configuration, then fill in your API keys as environment variables and the models you want:"
+msgstr "Utwórz konfigurację, potem ustaw klucze API jako zmienne środowiskowe i wpisz wybrane modele:"
+
+msgid "Check the model names:"
+msgstr "Sprawdź nazwy modeli:"
+
+msgid "Run it (here 2 answers per model and prompt):"
+msgstr "Uruchom (tu 2 odpowiedzi na model i prompt):"
+
+msgid "Upload the references.txt it writes under Add many. Out of quota or interrupted, run the same command again later: it goes on where it stopped."
+msgstr "Wyślij zapisany przez niego references.txt w „Dodaj wiele”. Gdy skończy się limit albo przerwiesz, uruchom to samo polecenie później: skrypt zacznie tam, gdzie skończył."
+
+msgid "Add many"
+msgstr "Dodaj wiele"
+
+msgid "Nothing was added; fix the text and add it again."
+msgstr "Nic nie dodano; popraw tekst i dodaj go ponownie."
 
 msgid "Add"
 msgstr "Dodaj"
+
+msgid "Large outputs: upload the file rather than pasting it."
+msgstr "Duże wyniki: wyślij plik zamiast wklejać."
+
+msgid "Add one"
+msgstr "Dodaj jedno"
 
 msgid "Delete this reference?"
 msgstr "Usunąć tę referencję?"
@@ -703,49 +741,17 @@ msgid "No references yet."
 msgstr "Nie ma jeszcze referencji."
 
 msgctxt "llmdetect"
-msgid "all"
-msgstr "wszystkie"
-
-msgctxt "llmdetect"
-msgid "Generate"
-msgstr "Generuj"
-
-msgctxt "llmdetect"
 msgid "Copied"
 msgstr "Skopiowano"
-
-msgctxt "llmdetect"
-msgid "Provider"
-msgstr "Dostawca"
-
-msgctxt "llmdetect"
-msgid "Today"
-msgstr "Dziś"
-
-msgctxt "llmdetect"
-msgid "now"
-msgstr "teraz"
-
-msgctxt "llmdetect"
-msgid "Done"
-msgstr "Gotowe"
-
-msgctxt "llmdetect"
-msgid "Status"
-msgstr "Stan"
 
 msgid "Before the round, get tens of solutions per problem from the models participants use and with prompts that imitate them. Keep wrong solutions too: their mistakes are a strong fingerprint. Only problem statements go to external models, never participants' code."
 msgstr "Przed turą zbierz kilkadziesiąt rozwiązań każdego zadania z modeli, których używają uczestnicy, i z promptów, które ich udają. Zachowuj też błędne rozwiązania: ich pomyłki to wyraźny odcisk palca. Do zewnętrznych modeli trafiają tylko treści zadań, nigdy kod uczestników."
 
-msgid "No models are configured. Add <code>LLMDETECT_PROVIDERS</code> to the settings (see the module's README): any OpenAI-compatible API (OpenRouter, Google Gemini, Groq, Mistral, a local Ollama, OpenAI...) or Anthropic. Without them you can still copy the prompts below into any chat and add the answers by hand."
-msgstr "Nie skonfigurowano modeli. Dodaj <code>LLMDETECT_PROVIDERS</code> do ustawień (zobacz README modułu): dowolne API zgodne z OpenAI (OpenRouter, Google Gemini, Groq, Mistral, lokalna Ollama, OpenAI...) albo Anthropic. Bez nich nadal możesz skopiować prompty poniżej do dowolnego czatu i dodać odpowiedzi ręcznie."
+msgid "This server never asks any LLM itself. Copy a prompt into a chat, or download the prompts for the script and run it on your computer with your own API keys; then add the answers below."
+msgstr "Ten serwer sam nigdy nie pyta żadnego LLM. Skopiuj prompt do czatu albo pobierz prompty dla skryptu i uruchom go na swoim komputerze z własnymi kluczami API; potem dodaj odpowiedzi poniżej."
 
-msgid "Free tiers of some providers may use what you send to train their models. Before the camp the statements are secret: prefer paid tiers that do not train on your data, or a model running on your own server, for unpublished problems."
-msgstr "Darmowe plany niektórych dostawców mogą używać wysłanych danych do trenowania modeli. Przed obozem treści zadań są tajne: dla nieopublikowanych zadań wybieraj płatne plany, które nie trenują na twoich danych, albo model działający na własnym serwerze."
-
-#, python-format
-msgid "waiting until %(time)s"
-msgstr "czeka do %(time)s"
+msgid "Each reference starts with a line like the ones below and goes on until the next one. The script writes this format; it is easy to write by hand too. A whole chat answer can follow the line: only its code is kept. Code already stored for the problem is skipped."
+msgstr "Każda referencja zaczyna się wierszem jak poniżej i trwa do następnego takiego wiersza. Skrypt zapisuje ten format; łatwo go też pisać ręcznie. Po wierszu może być cała odpowiedź z czatu: zostanie tylko kod. Kod już zapisany dla zadania jest pomijany."
 
 msgid "Submissions"
 msgstr "Zgłoszenia"

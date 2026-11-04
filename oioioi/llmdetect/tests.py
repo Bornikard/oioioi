@@ -1,3 +1,5 @@
+import importlib.util
+import json
 import os
 import random
 import tempfile
@@ -11,9 +13,9 @@ from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.http import HttpResponse
-from django.test import RequestFactory, override_settings
+from django.test import RequestFactory
 from django.urls import reverse
-from django.utils import timezone, translation
+from django.utils import translation
 
 from oioioi.base.tests import TestCase
 from oioioi.contests.models import Contest, ContestPermission, ProblemInstance, Round
@@ -21,19 +23,17 @@ from oioioi.contests.scores import IntegerScore
 from oioioi.llmdetect import features as F
 from oioioi.llmdetect.controllers import LLMDetectContestControllerMixin
 from oioioi.llmdetect.explain import HABIT_LABELS, SIGNAL_LABELS, describe, habit_value
-from oioioi.llmdetect.generation import PROMPTS, _seconds, build_prompt, extract_code, next_reset, provider_state
 from oioioi.llmdetect.habits import extract_habits
 from oioioi.llmdetect.middleware import ProblemViewMiddleware
 from oioioi.llmdetect.models import (
-    GenerationJob,
     LLMDetectConfig,
     LLMReferenceSolution,
     ProblemViewEvent,
-    ProviderState,
     ReviewDecision,
     RiskAssessment,
     SubmissionFeatures,
 )
+from oioioi.llmdetect.prompts import PROMPTS, PROMPTS_FORMAT, build_prompt, extract_code, parse_references
 from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, compute_features, needs_update, user_rankings
 from oioioi.problems.models import Problem
 from oioioi.programs.models import ProgramSubmission
@@ -519,237 +519,262 @@ class TestCommands(LLMDetectTestCase):
         self.assertEqual(decision.note, "")
 
 
-PROVIDERS = {
-    "free": {"type": "openai", "base_url": "https://example.com/v1/", "api_key": "k", "models": ["small:free", "big:free"]},
-    "claude": {"type": "anthropic", "api_key": "k", "models": ["claude-opus-5-5"]},
-}
+def _load_script():
+    path = os.path.join(os.path.dirname(__file__), "tools", "llm_references.py")
+    spec = importlib.util.spec_from_file_location("llm_references", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def _chat_response(text, status=200):
-    response = MagicMock(status_code=status, text=text, headers={})
-    response.json.return_value = {"choices": [{"message": {"content": text}}]}
-    return response
+script = _load_script()
 
 
-class TestGenerationHelpers(SimpleTestCase):
-    def test_rate_limit_headers(self):
-        now = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
-        self.assertEqual(_seconds("30"), 30)
-        self.assertEqual(_seconds("2m59.5s"), 179.5)
-        self.assertEqual(_seconds("1h"), 3600)
-        self.assertEqual(_seconds(str(int((now + timedelta(seconds=90)).timestamp() * 1000)), now), 90)
-        self.assertEqual(_seconds("Wed, 04 Nov 2026 12:10:00 GMT", now), 600)
-        self.assertIsNone(_seconds("soon"))
-        self.assertIsNone(_seconds(None))
-
+class TestPrompts(SimpleTestCase):
     def test_extract_code(self):
         answer = "Here is the solution:\n```cpp\nint main() {}\n```\nAnd a test:\n```\n1 2\n```"
         self.assertEqual(extract_code(answer), "int main() {}\n")
         self.assertEqual(extract_code("int main() {}"), "int main() {}\n")
+        self.assertEqual(script.extract_code(answer), extract_code(answer))
 
     def test_prompts_contain_the_statement(self):
         for variant in PROMPTS:
-            prompt = build_prompt(variant, "Given n, print n+1.")
-            self.assertTrue(prompt.endswith("Given n, print n+1."))
+            prompt = build_prompt(variant, "Given n, print n+1.\n")
+            self.assertTrue(prompt.endswith("\n\nGiven n, print n+1."))
             self.assertIn("C++", prompt)
 
-
-@override_settings(LLMDETECT_PROVIDERS=PROVIDERS)
-class TestGeneration(LLMDetectTestCase):
-    def _job(self, **kwargs):
-        defaults = {
-            "problem_instance": self.pis[0],
-            "provider": "free",
-            "model": "small:free",
-            "prompt_variant": "plain",
-            "count": 2,
-            "statement": "Add two numbers.",
-        }
-        return GenerationJob.objects.create(**{**defaults, **kwargs})
-
-    def _url(self, **params):
-        url = reverse("llmdetect_references", kwargs={"contest_id": self.contest.id})
-        return url + ("?" + "&".join(f"{k}={v}" for k, v in params.items()) if params else "")
-
-    def test_generate_form_queues_jobs_with_the_edited_statement(self):
-        self.assertTrue(self.client.login(username="test_admin"))
-        response = self.client.post(
-            self._url(),
-            {
-                "action": "generate",
-                "problem_instance": self.pis[0].id,
-                "statement": "Edited statement.",
-                "models": ["free:small:free", "claude:claude-opus-5-5"],
-                "prompts": ["plain", "student"],
-                "count": 3,
-            },
-        )
-        self.assertEqual(response.status_code, 302)
-        jobs = GenerationJob.objects.all()
-        self.assertEqual(jobs.count(), 4)
-        self.assertEqual({(j.provider, j.model) for j in jobs}, {("free", "small:free"), ("claude", "claude-opus-5-5")})
-        self.assertTrue(all(j.statement == "Edited statement." and j.count == 3 and j.status == GenerationJob.QUEUED for j in jobs))
-        page = self.client.get(self._url(problem=self.pis[0].id))
-        self.assertContains(page, "small:free")
-
-    def test_load_statement(self):
-        self.assertTrue(self.client.login(username="test_admin"))
-        with patch("oioioi.llmdetect.views.statement_text", return_value="Dane jest n."):
-            response = self.client.get(self._url(problem=self.pis[0].id, statement=1))
-        self.assertEqual(response.context["generate_form"].initial["statement"], "Dane jest n.")
-        with patch("oioioi.llmdetect.views.statement_text", return_value=""):
-            response = self.client.get(self._url(problem=self.pis[0].id, statement=1))
-        self.assertContains(response, "Could not read the statement")
-
     def test_statement_text_formats(self):
-        from oioioi.llmdetect.generation import _text_of
+        from oioioi.llmdetect.prompts import _text_of
 
         self.assertEqual(_text_of(b"<html><body><h1>Zadanie</h1><p>Dane jest n.</p></body></html>", ".html"), "Zadanie\nDane jest n.")
         self.assertEqual(_text_of(b"Dane\r\n\r\n\r\n\r\njest n.", ".txt"), "Dane\n\njest n.")
         self.assertEqual(_text_of(b"\x00", ".ps"), "")
 
-    def test_openai_compatible_job_creates_references(self):
-        job = self._job()
-        with patch("oioioi.llmdetect.generation.requests.post", return_value=_chat_response("```cpp\n" + LLM_BFS + "```")) as post:
-            call_command("llmdetect_generator", "--once", stdout=StringIO())
-        job.refresh_from_db()
-        self.assertEqual((job.status, job.produced), (GenerationJob.DONE, 2))
-        (url,) = post.call_args.args
-        self.assertEqual(url, "https://example.com/v1/chat/completions")
-        body = post.call_args.kwargs["json"]
-        self.assertEqual(body["model"], "small:free")
-        # Only the instruction and the statement are sent.
-        self.assertEqual(body["messages"], [{"role": "user", "content": build_prompt("plain", "Add two numbers.")}])
-        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer k")
-        references = LLMReferenceSolution.objects.filter(problem_instance=self.pis[0])
-        self.assertEqual(references.count(), 2)
-        self.assertEqual(references.first().source, LLM_BFS)
-        self.assertEqual(references.first().model_name, "small:free")
-        self.assertTrue(references.first().fingerprints)
-        self.assertTrue(LLMDetectConfig.objects.get(contest=self.contest).dirty)
 
-    def test_rate_limit_is_retried_and_errors_fail_the_job(self):
-        job = self._job(count=1)
-        limited = MagicMock(status_code=429, text="slow down", headers={"retry-after": "0"})
-        with patch("oioioi.llmdetect.generation.requests.post", side_effect=[limited, _chat_response("int main(){}")]):
-            call_command("llmdetect_generator", "--once", stdout=StringIO())
-        job.refresh_from_db()
-        self.assertEqual(job.status, GenerationJob.DONE)
-        failing = self._job(count=1)
-        with patch("oioioi.llmdetect.generation.requests.post", return_value=MagicMock(status_code=401, text="bad key", headers={})):
-            call_command("llmdetect_generator", "--once", stdout=StringIO())
-        failing.refresh_from_db()
-        self.assertEqual(failing.status, GenerationJob.FAILED)
-        self.assertIn("HTTP 401", failing.error)
+class TestBulkFormat(SimpleTestCase):
+    problems = {"abc": "pi-abc", "xyz": "pi-xyz"}
 
-    def test_claude_job_uses_the_sdk_with_fallback(self):
-        job = self._job(provider="claude", model="claude-opus-5-5", count=1)
-        message = MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="```cpp\nint main(){}\n```")])
-        with patch("anthropic.Anthropic") as client_class:
-            client_class.return_value.beta.messages.create.return_value = message
-            call_command("llmdetect_generator", "--once", stdout=StringIO())
-        job.refresh_from_db()
-        self.assertEqual(job.status, GenerationJob.DONE, job.error)
-        kwargs = client_class.return_value.beta.messages.create.call_args.kwargs
-        self.assertEqual((kwargs["model"], kwargs["fallbacks"], kwargs["betas"]), ("claude-opus-5-5", "default", ["server-side-fallback-2026-07-01"]))
-        self.assertEqual(LLMReferenceSolution.objects.get().source, "int main(){}\n")
+    def test_parse(self):
+        text = (
+            '### reference problem=abc model="ChatGPT free" prompt=polish\n'
+            "int main(){}\n"
+            "\n"
+            "### Reference problem=xyz model=groq/openai/gpt-oss-120b prompt=student n=2 extra=ignored\n"
+            "Here is the solution:\n```cpp\nint main() { return 0; }\n```\nExplanation: none.\n"
+            "### reference model=duck.ai\n"
+            "int f(){}\n"
+        )
+        references, errors = parse_references(text, self.problems, default_problem="pi-default")
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            [(r["problem_instance"], r["model"], r["prompt"], r["source"], r["line"]) for r in references],
+            [
+                ("pi-abc", "ChatGPT free", "polish", "int main(){}\n", 1),
+                ("pi-xyz", "groq/openai/gpt-oss-120b", "student", "int main() { return 0; }\n", 4),
+                ("pi-default", "duck.ai", "", "int f(){}\n", 10),
+            ],
+        )
 
-    def test_claude_refusal_fails_the_job(self):
-        job = self._job(provider="claude", model="claude-opus-5-5", count=1)
-        with patch("anthropic.Anthropic") as client_class:
-            client_class.return_value.beta.messages.create.return_value = MagicMock(stop_reason="refusal", content=[])
-            call_command("llmdetect_generator", "--once", stdout=StringIO())
-        job.refresh_from_db()
-        self.assertEqual(job.status, GenerationJob.FAILED)
-        self.assertIn("declined", job.error)
+    def test_errors(self):
+        text = "stray text\n### reference problem=nope\nint main(){}\n### reference problem=abc\n\n### reference\nint g(){}\n"
+        references, errors = parse_references(text, self.problems)
+        self.assertEqual(len(errors), 4)
+        self.assertIn("before the first", errors[0])
+        self.assertIn("no problem nope", errors[1])
+        self.assertIn("Line 4: no code", errors[2])
+        self.assertIn("Line 6: no problem given", errors[3])
+        self.assertEqual(parse_references("int main(){}", self.problems)[1], ['No "### reference" lines found.'])
 
-    def test_generator_survives_database_errors(self):
-        from django.db import DatabaseError
 
-        from oioioi.llmdetect.management.commands import llmdetect_generator
+class TestScript(SimpleTestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.output = os.path.join(self.directory.name, "references.txt")
+        self.now = [0.0]
+        self.slept = []
+        patches = [
+            patch.object(script, "clock", lambda: self.now[0]),
+            patch.object(script, "sleep", self._sleep),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
 
-        class Stop(Exception):
-            pass
+    def tearDown(self):
+        self.directory.cleanup()
 
-        with (
-            patch.object(llmdetect_generator, "next_request", side_effect=DatabaseError("no such table")),
-            patch.object(llmdetect_generator.time, "sleep", side_effect=Stop) as sleep,
-            self.assertRaises(Stop),
-        ):
-            call_command("llmdetect_generator", stdout=StringIO())
-        sleep.assert_called_once_with(llmdetect_generator.ERROR_PAUSE)
+    def _sleep(self, seconds):
+        self.slept.append(round(seconds, 3))
+        self.now[0] += seconds
 
-    def test_jobs_left_running_are_resumed(self):
-        job = self._job(count=2, status=GenerationJob.RUNNING, produced=1)
-        with patch("oioioi.llmdetect.generation.requests.post", return_value=_chat_response("int main(){}")) as post:
-            call_command("llmdetect_generator", "--once", stdout=StringIO())
-        job.refresh_from_db()
-        self.assertEqual((job.status, job.produced, post.call_count), (GenerationJob.DONE, 2, 1))
+    def _providers(self, **configs):
+        return [script.Provider(name, config) for name, config in configs.items()]
 
-    @override_settings(LLMDETECT_PROVIDERS={})
-    def test_no_providers(self):
+    prompts = [{"problem": "abc", "prompt": "plain", "text": "P1"}, {"problem": "xyz", "prompt": "student", "text": "P2"}]
+
+    def test_output_is_the_bulk_format_and_providers_alternate(self):
+        asked = []
+
+        def ask(config, model, prompt):
+            asked.append((config["name"], model, prompt))
+            return f"Sure:\n```cpp\n// {model} {prompt}\nint main(){{}}\n```"
+
+        providers = self._providers(a={"name": "a", "models": ["m1"], "min_interval": 10}, b={"name": "b", "models": ["m2", "m3"], "min_interval": 10})
+        with patch.object(script, "ask", ask):
+            result = script.run(self.prompts, providers, count=2, output=self.output, log=lambda *a: None)
+        self.assertEqual(result, {"done": 12, "failed": 0, "left": 0})
+        # a and b take turns; neither waits for the other's interval.
+        self.assertEqual([name for name, _m, _p in asked[:4]], ["a", "b", "a", "b"])
+        with open(self.output, encoding="utf-8") as file:
+            text = file.read()
+        references, errors = parse_references(text, {"abc": "pi-abc", "xyz": "pi-xyz"})
+        self.assertEqual(errors, [])
+        self.assertEqual(len(references), 12)
+        self.assertEqual(references[0]["source"], "// m1 P1\nint main(){}\n")
+        self.assertEqual({r["model"] for r in references}, {"a/m1", "b/m2", "b/m3"})
+
+    def test_resume_and_quota(self):
+        calls = {"n": 0}
+
+        def ask(config, model, prompt):
+            calls["n"] += 1
+            if config["name"] == "b":
+                raise script.QuotaError("HTTP 429: daily limit", retry_after=3600)
+            return "int main(){}"
+
+        providers = self._providers(a={"name": "a", "models": ["m"]}, b={"name": "b", "models": ["m"]})
+        with patch.object(script, "ask", ask):
+            result = script.run(self.prompts, providers, count=1, output=self.output, log=lambda *a: None)
+        # b is out of quota: left for the next run, a finished.
+        self.assertEqual(result, {"done": 2, "failed": 0, "left": 2})
+        self.assertEqual(providers[1].stopped.startswith("out of quota"), True)
+        # The next run asks only for what is missing.
+        providers = self._providers(a={"name": "a", "models": ["m"]}, b={"name": "b", "models": ["m"]})
+        with patch.object(script, "ask", lambda config, model, prompt: "int g(){}"):
+            result = script.run(self.prompts, providers, count=1, output=self.output, log=lambda *a: None)
+        self.assertEqual(result, {"done": 2, "failed": 0, "left": 0})
+        self.assertEqual(len(script.done_keys(self.output)), 4)
+
+    def test_short_waits_and_daily_limit(self):
+        answers = iter([script.QuotaError("HTTP 429", retry_after=20), "int a(){}", "int b(){}", "int c(){}"])
+
+        def ask(config, model, prompt):
+            answer = next(answers)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        providers = self._providers(a={"name": "a", "models": ["m"], "daily_limit": 2})
+        with patch.object(script, "ask", ask):
+            result = script.run(self.prompts, providers, count=2, output=self.output, log=lambda *a: None)
+        self.assertIn(20, self.slept)
+        # Two requests (one refused, one answered), then the daily limit.
+        self.assertEqual(result, {"done": 1, "failed": 0, "left": 3})
+        self.assertIn("daily_limit", providers[0].stopped)
+
+    def test_unknown_model_is_skipped(self):
+        def ask(config, model, prompt):
+            if model == "gone":
+                raise script.ModelError("HTTP 404: no such model")
+            return "int main(){}"
+
+        providers = self._providers(a={"name": "a", "models": ["gone", "ok"]})
+        with patch.object(script, "ask", ask) as _ask:
+            result = script.run(self.prompts, providers, count=2, output=self.output, log=lambda *a: None)
+        self.assertEqual(result, {"done": 4, "failed": 4, "left": 0})
+
+    def test_providers_without_a_key_are_skipped(self):
+        config = os.path.join(self.directory.name, "providers.json")
+        with open(config, "w") as file:
+            json.dump(
+                {"x": {"api_key_env": "LLMDETECT_TEST_UNSET", "models": ["m"]}, "local": {"base_url": "http://h/v1", "models": ["m"]}, "empty": {"models": []}},
+                file,
+            )
+        logged = []
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("LLMDETECT_TEST_UNSET", None)
+            providers = script.load_providers(config, log=logged.append)
+        self.assertEqual([p.name for p in providers], ["local"])
+        self.assertIn("LLMDETECT_TEST_UNSET is not set", logged[0])
+
+    def test_openai_request(self):
+        response = MagicMock()
+        response.read.return_value = json.dumps({"choices": [{"message": {"content": "int main(){}"}}]}).encode()
+        response.__enter__.return_value = response
+        with patch.object(script.urllib.request, "urlopen", return_value=response) as urlopen, patch.dict(os.environ, {"LLMDETECT_TEST_KEY": "k"}):
+            answer = script.ask({"base_url": "https://example.com/v1/", "api_key_env": "LLMDETECT_TEST_KEY", "max_tokens": 100}, "m", "prompt")
+        self.assertEqual(answer, "int main(){}")
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://example.com/v1/chat/completions")
+        self.assertEqual(request.get_header("Authorization"), "Bearer k")
+        self.assertEqual(json.loads(request.data), {"model": "m", "messages": [{"role": "user", "content": "prompt"}], "max_tokens": 100})
+
+    def test_rate_limit_headers(self):
+        self.assertEqual(script.seconds("30"), 30)
+        self.assertEqual(script.seconds("2m59.5s"), 179.5)
+        self.assertEqual(script.seconds("1h"), 3600)
+        self.assertEqual(script.seconds(str(int((1_800_000_000 + 90) * 1000)), now=1_800_000_000), 90)
+        self.assertIsNone(script.seconds("soon"))
+        self.assertEqual(script.header(problem="abc", model="ChatGPT free", n=1), '### reference problem=abc model="ChatGPT free" n=1')
+
+
+class TestReferencesPage(LLMDetectTestCase):
+    def _url(self, name="llmdetect_references", **params):
+        url = reverse(name, kwargs={"contest_id": self.contest.id})
+        return url + ("?" + "&".join(f"{k}={v}" for k, v in params.items()) if params else "")
+
+    def setUp(self):
+        super().setUp()
         self.assertTrue(self.client.login(username="test_admin"))
-        response = self.client.get(self._url())
-        self.assertContains(response, "No models are configured")
-        # Prompts can still be copied into a chat by hand.
+
+    def test_load_statement_and_copy_buttons(self):
+        with patch("oioioi.llmdetect.views.statement_text", return_value="Dane jest n."):
+            response = self.client.get(self._url(problem=self.pis[0].id, statement=1))
+        self.assertEqual(response.context["prompts_form"].initial["statement"], "Dane jest n.")
         for _label, instruction in PROMPTS.values():
             self.assertContains(response, f'data-instruction="{instruction}"')
+        with patch("oioioi.llmdetect.views.statement_text", return_value=""):
+            response = self.client.get(self._url(problem=self.pis[0].id, statement=1))
+        self.assertContains(response, "Could not read the statement")
 
-    @override_settings(
-        LLMDETECT_PROVIDERS={
-            "a": {"type": "openai", "base_url": "https://a.example/v1", "models": ["m"], "min_interval": 3600},
-            "b": {"type": "openai", "base_url": "https://b.example/v1", "models": ["m"], "min_interval": 3600},
-        }
-    )
-    def test_requests_alternate_between_providers(self):
-        first = self._job(provider="a", model="m", count=3)
-        second = self._job(provider="b", model="m", count=3)
-        with patch("oioioi.llmdetect.generation.requests.post", return_value=_chat_response("int main(){}")) as post:
-            call_command("llmdetect_generator", "--once", stdout=StringIO())
-        # One request each; both then wait for their min_interval.
-        urls = [call.args[0] for call in post.call_args_list]
-        self.assertEqual(urls, ["https://a.example/v1/chat/completions", "https://b.example/v1/chat/completions"])
-        for job in (first, second):
-            job.refresh_from_db()
-            self.assertEqual((job.produced, job.status), (1, GenerationJob.QUEUED))
-        self.assertTrue(self.client.login(username="test_admin"))
-        self.assertContains(self.client.get(self._url()), "waiting until")
+    def test_download_prompts_of_one_problem(self):
+        response = self.client.post(
+            self._url(), {"action": "prompts", "problem_instance": self.pis[0].id, "statement": "Edited.", "prompts": ["plain", "student"]}
+        )
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertIn("prompts-camp-aaa.json", response["Content-Disposition"])
+        data = json.loads(response.content)
+        self.assertEqual(data["format"], PROMPTS_FORMAT)
+        self.assertEqual(data["prompts"], [{"problem": "aaa", "prompt": v, "text": build_prompt(v, "Edited.")} for v in ("plain", "student")])
 
-    @override_settings(LLMDETECT_PROVIDERS={"free": {**PROVIDERS["free"], "daily_limit": 2, "reset_utc_hour": 8}})
-    def test_daily_limit_waits_for_the_reset(self):
-        job = self._job(count=5)
-        with patch("oioioi.llmdetect.generation.requests.post", return_value=_chat_response("int main(){}")) as post:
-            call_command("llmdetect_generator", "--once", stdout=StringIO())
-        job.refresh_from_db()
-        self.assertEqual((post.call_count, job.produced, job.status), (2, 2, GenerationJob.QUEUED))
-        self.assertEqual(ProviderState.objects.get(provider="free").requests_today, 2)
-        # The next quota day starts at 8:00 UTC, and the counter starts again.
-        config = {**PROVIDERS["free"], "reset_utc_hour": 8}
-        reset = next_reset(config, timezone.now())
-        self.assertEqual((reset.hour, reset.minute), (8, 0))
-        self.assertEqual(provider_state("free", config, reset + timedelta(minutes=1)).requests_today, 0)
+    def test_download_prompts_of_all_problems_and_the_script(self):
+        with patch("oioioi.llmdetect.views.statement_text", side_effect=lambda pi: "" if pi.short_name == "bbb" else f"Statement {pi.short_name}"):
+            data = json.loads(self.client.get(self._url("llmdetect_all_prompts")).content)
+        self.assertEqual({p["problem"] for p in data["prompts"]}, {"aaa", "ccc", "ddd"})
+        self.assertEqual(len(data["prompts"]), 3 * len(PROMPTS))
+        response = self.client.get(self._url("llmdetect_script"))
+        self.assertIn("llm_references.py", response["Content-Disposition"])
+        self.assertIn(b"def main(argv=None):", response.content)
 
-    def test_refusing_provider_is_paused_without_failing_the_job(self):
-        job = self._job(count=1)
-        limited = MagicMock(status_code=429, text="daily limit reached", headers={"retry-after": "7200"})
-        with patch("oioioi.llmdetect.generation.requests.post", return_value=limited) as post:
-            call_command("llmdetect_generator", "--once", stdout=StringIO())
-        job.refresh_from_db()
-        self.assertEqual((post.call_count, job.status, job.produced), (1, GenerationJob.QUEUED, 0))
-        self.assertIn("HTTP 429", job.error)
-        state = ProviderState.objects.get(provider="free")
-        self.assertGreater(state.paused_until, timezone.now() + timedelta(minutes=110))
-        self.assertEqual(state.strikes, 1)
+    def test_add_many(self):
+        text = "### reference problem=aaa model=x prompt=plain\nint a(){}\n### reference problem=bbb model=y\n```cpp\nint b(){}\n```\n"
+        response = self.client.post(self._url(), {"action": "bulk", "text": text})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            sorted(LLMReferenceSolution.objects.values_list("problem_instance__short_name", "model_name", "source")),
+            [("aaa", "x", "int a(){}\n"), ("bbb", "y", "int b(){}\n")],
+        )
+        self.assertTrue(LLMDetectConfig.objects.get(contest=self.contest).dirty)
+        # The same again, as a file, with one more: duplicates are skipped.
+        upload = ContentFile((text + "### reference problem=aaa\nint c(){}\n").encode(), name="references.txt")
+        self.client.post(self._url(), {"action": "bulk", "file": upload}, follow=True)
+        self.assertEqual(LLMReferenceSolution.objects.count(), 3)
 
-    def test_models_command(self):
-        listing = MagicMock(status_code=200)
-        listing.json.return_value = {"data": [{"id": "small:free"}, {"id": "other:free"}, {"id": "paid"}]}
-        with patch("oioioi.llmdetect.management.commands.llmdetect_models.requests.get", return_value=listing) as get:
-            out = StringIO()
-            call_command("llmdetect_models", "free", "--free", stdout=out)
-        self.assertEqual(get.call_args.args[0], "https://example.com/v1/models")
-        lines = out.getvalue().splitlines()
-        self.assertIn(" * small:free", lines)
-        self.assertIn("   other:free", lines)
-        self.assertIn(" ! big:free  (configured, but not offered)", lines)
-        self.assertNotIn("   paid", lines)
+    def test_add_many_with_errors_adds_nothing(self):
+        text = "### reference problem=aaa\nint a(){}\n### reference problem=nope\nint b(){}\n"
+        response = self.client.post(self._url(), {"action": "bulk", "text": text})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "no problem nope")
+        self.assertEqual(LLMReferenceSolution.objects.count(), 0)
+        self.client.post(self._url(), {"action": "bulk", "text": "### reference\nint a(){}\n", "default_problem": self.pis[2].id})
+        self.assertEqual(LLMReferenceSolution.objects.get().problem_instance, self.pis[2])

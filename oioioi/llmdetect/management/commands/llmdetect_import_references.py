@@ -3,8 +3,8 @@ import os
 from django.core.management.base import BaseCommand, CommandError
 
 from oioioi.contests.models import Contest, ProblemInstance
-from oioioi.llmdetect.generation import code_of_chat_answer
 from oioioi.llmdetect.models import LLMReferenceSolution, mark_dirty
+from oioioi.llmdetect.prompts import code_of_chat_answer
 
 
 class Command(BaseCommand):

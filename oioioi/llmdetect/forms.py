@@ -1,10 +1,9 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
-from django.utils.translation import pgettext_lazy
 
 from oioioi.contests.models import ProblemInstance
-from oioioi.llmdetect.generation import code_of_chat_answer
 from oioioi.llmdetect.models import LLMDetectConfig, ReviewDecision
+from oioioi.llmdetect.prompts import PROMPTS, code_of_chat_answer
 
 MAX_REFERENCE_SIZE = 256 * 1024
 
@@ -82,24 +81,69 @@ class DecisionForm(forms.ModelForm):
         self.fields["submission"].help_text = _("A confirmed submission becomes an LLM reference of its problem.")
 
 
-class GenerateForm(forms.Form):
+def _problems(contest):
+    return ProblemInstance.objects.filter(contest=contest).select_related("round").order_by("round__start_date", "short_name")
+
+
+class PromptsForm(forms.Form):
+    """The statement of a problem, checked by the staff, for the prompts."""
+
     problem_instance = forms.ModelChoiceField(queryset=ProblemInstance.objects.none(), label=_("Problem"))
     statement = forms.CharField(
         widget=forms.Textarea(attrs={"rows": 12, "class": "font-monospace small"}),
-        label=_("Statement sent to the models"),
-        help_text=_("Exactly this text is sent, with a short instruction. Check it, and remove anything that must not leave the server."),
+        label=_("Statement in the prompts"),
+        help_text=_("The prompts are this text with a short instruction. Check it, and remove anything that must not be sent to an LLM."),
         max_length=60000,
     )
-    models = forms.MultipleChoiceField(widget=forms.CheckboxSelectMultiple, label=pgettext_lazy("llmdetect", "Models"))
     prompts = forms.MultipleChoiceField(widget=forms.CheckboxSelectMultiple, label=_("Prompts"))
-    count = forms.IntegerField(min_value=1, max_value=20, initial=2, label=_("Solutions per model and prompt"))
 
     def __init__(self, *args, contest, **kwargs):
-        from oioioi.llmdetect.generation import PROMPTS, model_choices
-
         super().__init__(*args, **kwargs)
-        problems = ProblemInstance.objects.filter(contest=contest).select_related("round")
-        self.fields["problem_instance"].queryset = problems.order_by("round__start_date", "short_name")
-        self.fields["models"].choices = model_choices()
+        self.fields["problem_instance"].queryset = _problems(contest)
         self.fields["prompts"].choices = [(key, label) for key, (label, _instruction) in PROMPTS.items()]
         self.fields["prompts"].initial = list(PROMPTS)
+
+
+MAX_BULK_SIZE = 20 * 1024 * 1024
+
+
+class BulkReferencesForm(forms.Form):
+    """Many references at once, in the bulk format (see prompts.py)."""
+
+    text = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 10, "class": "font-monospace small"}),
+        required=False,
+        label=_("Paste"),
+        strip=False,
+    )
+    file = forms.FileField(required=False, label=_("Or upload a file"))
+    default_problem = forms.ModelChoiceField(
+        queryset=ProblemInstance.objects.none(),
+        required=False,
+        label=_("Problem for entries without problem="),
+    )
+
+    def __init__(self, *args, contest, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["default_problem"].queryset = _problems(contest)
+        self.problems = {pi.short_name: pi for pi in _problems(contest)}
+
+    def clean(self):
+        from oioioi.llmdetect.prompts import parse_references
+
+        cleaned = super().clean()
+        parts = []
+        upload = cleaned.get("file")
+        if upload:
+            if upload.size > MAX_BULK_SIZE:
+                raise forms.ValidationError(_("The file is too large."))
+            parts.append(upload.read().decode("utf-8", "replace"))
+        if (cleaned.get("text") or "").strip():
+            parts.append(cleaned["text"])
+        if not parts:
+            raise forms.ValidationError(_("Paste the references or choose a file."))
+        references, errors = parse_references("\n".join(parts), self.problems, cleaned.get("default_problem"))
+        if errors:
+            raise forms.ValidationError(errors[:20] + ([_("…and %(count)d more errors.") % {"count": len(errors) - 20}] if len(errors) > 20 else []))
+        cleaned["references"] = references
+        return cleaned
