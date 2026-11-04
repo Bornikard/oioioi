@@ -1,0 +1,456 @@
+# Polish translations of the LLM detection module.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: pl\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "Close to an LLM solution"
+msgstr "Bliskie rozwiązaniu LLM"
+
+msgid "LLM-like style"
+msgstr "Styl typowy dla LLM"
+
+msgid "Style shift towards LLM"
+msgstr "Zmiana stylu w stronę LLM"
+
+msgid "Unlike own style"
+msgstr "Niepodobne do własnego stylu"
+
+msgid "Unusually fast"
+msgstr "Nietypowo szybko"
+
+msgid "Much code at once"
+msgstr "Dużo kodu naraz"
+
+msgid "Rewritten from scratch"
+msgstr "Przepisane od nowa"
+
+msgid "Hard problem at first try"
+msgstr "Trudne zadanie za pierwszym razem"
+
+msgid "Above own level"
+msgstr "Powyżej własnego poziomu"
+
+msgid "Pasted, usually uploads files"
+msgstr "Wklejone, zwykle wysyła pliki"
+
+msgid "Similar to another participant"
+msgstr "Podobne do innego uczestnika"
+
+msgid "comments per line"
+msgstr "komentarze na wiersz"
+
+msgid "prose comments"
+msgstr "komentarze prozą"
+
+msgid "full-sentence comments"
+msgstr "komentarze pełnymi zdaniami"
+
+msgid "English comments"
+msgstr "komentarze po angielsku"
+
+msgid "commented-out code"
+msgstr "zakomentowany kod"
+
+msgid "words in comments"
+msgstr "słowa w komentarzach"
+
+msgid "identifier length"
+msgstr "długość nazw"
+
+msgid "long identifiers"
+msgstr "długie nazwy"
+
+msgid "multi-word identifiers"
+msgstr "nazwy wielowyrazowe"
+
+msgid "one- or two-letter identifiers"
+msgstr "nazwy jedno- i dwuliterowe"
+
+msgid "upper-case identifiers"
+msgstr "nazwy wielkimi literami"
+
+msgid "std:: prefixes"
+msgstr "prefiksy std::"
+
+msgid "using namespace std"
+msgstr "using namespace std"
+
+msgid "bits/stdc++.h"
+msgstr "bits/stdc++.h"
+
+msgid "includes"
+msgstr "dyrektywy include"
+
+msgid "macros"
+msgstr "makra"
+
+msgid "type aliases"
+msgstr "aliasy typów"
+
+msgid "fast IO"
+msgstr "szybkie wejście/wyjście"
+
+msgid "debug output"
+msgstr "wypisywanie do debugowania"
+
+msgid "return 0 at the end"
+msgstr "return 0 na końcu"
+
+msgid "endl instead of \\n"
+msgstr "endl zamiast \\n"
+
+msgid "printf/scanf"
+msgstr "printf/scanf"
+
+msgid "const"
+msgstr "const"
+
+msgid "auto"
+msgstr "auto"
+
+msgid "long long spelled out"
+msgstr "long long pisane w całości"
+
+msgid "const references"
+msgstr "referencje const"
+
+msgid "braces on own line"
+msgstr "klamry w osobnym wierszu"
+
+msgid "tab indentation"
+msgstr "wcięcia tabulatorem"
+
+msgid "indentation width"
+msgstr "szerokość wcięć"
+
+msgid "blank lines"
+msgstr "puste wiersze"
+
+msgid "line length"
+msgstr "długość wierszy"
+
+msgid "spaces around operators"
+msgstr "spacje wokół operatorów"
+
+msgid "several statements per line"
+msgstr "kilka instrukcji w wierszu"
+
+msgid "trailing spaces"
+msgstr "spacje na końcach wierszy"
+
+#, python-format
+msgid "%(similarity)s of the code matches an LLM reference (participants usually: %(baseline)s)."
+msgstr "%(similarity)s kodu pokrywa się z referencją LLM (u uczestników zwykle: %(baseline)s)."
+
+#, python-format
+msgid "Far from own style (z = %(z)s) and closer to LLM style (%(style)s, usually %(profile)s)."
+msgstr "Daleko od własnego stylu (z = %(z)s) i bliżej stylu LLM (%(style)s, zwykle %(profile)s)."
+
+#, python-format
+msgid "Far from own style (z = %(z)s), profile confidence %(confidence)s."
+msgstr "Daleko od własnego stylu (z = %(z)s), pewność profilu %(confidence)s."
+
+#, python-format
+msgid "Solved after %(minutes).0f min; others needed %(median).0f min (median)."
+msgstr "Rozwiązane po %(minutes).0f min; inni potrzebowali %(median).0f min (mediana)."
+
+#, python-format
+msgid "%(lines)d new lines in %(minutes).0f min."
+msgstr "%(lines)d nowych wierszy w %(minutes).0f min."
+
+#, python-format
+msgid "Only %(similarity)s in common with the previous, failed version."
+msgstr "Tylko %(similarity)s wspólne z poprzednią, nieudaną wersją."
+
+#, python-format
+msgid "Full score at the first submission; %(rate)s of participants solved it."
+msgstr "Maksimum punktów w pierwszym zgłoszeniu; zadanie rozwiązało %(rate)s uczestników."
+
+#, python-format
+msgid "Solved by %(rate)s of participants; on other problems this participant is better than %(strength)s of them."
+msgstr "Zadanie rozwiązało %(rate)s uczestników; w pozostałych zadaniach ten uczestnik jest lepszy od %(strength)s z nich."
+
+#, python-format
+msgid "Pasted into the form; pastes only %(rate)s of other submissions."
+msgstr "Wklejone do formularza; wkleja tylko %(rate)s pozostałych zgłoszeń."
+
+#, python-format
+msgid "%(similarity)s in common with a submission of %(user)s."
+msgstr "%(similarity)s wspólne ze zgłoszeniem: %(user)s."
+
+#, python-format
+msgid "Typical of LLM code: %(reasons)s."
+msgstr "Typowe dla kodu LLM: %(reasons)s."
+
+#, python-format
+msgid "Model: %(model)s."
+msgstr "Model: %(model)s."
+
+msgid "A confirmed submission becomes an LLM reference of its problem."
+msgstr "Potwierdzone zgłoszenie staje się referencją LLM swojego zadania."
+
+msgid "Problem"
+msgstr "Zadanie"
+
+msgid "Model"
+msgstr "Model"
+
+msgid "Prompt"
+msgstr "Prompt"
+
+msgid "Files"
+msgstr "Pliki"
+
+msgid "Or paste code"
+msgstr "Albo wklej kod"
+
+msgid "Choose files or paste code."
+msgstr "Wybierz pliki albo wklej kod."
+
+#, python-format
+msgid "%(name)s is too large."
+msgstr "%(name)s jest za duży."
+
+msgid "LLM detection settings"
+msgstr "Ustawienia wykrywania LLM"
+
+msgid "LLM reference solution"
+msgstr "Rozwiązanie referencyjne LLM"
+
+msgid "LLM reference solutions"
+msgstr "Rozwiązania referencyjne LLM"
+
+msgid "supervised rounds"
+msgstr "tury nadzorowane"
+
+msgid "Rounds written under supervision without internet. Their submissions anchor each participant's style."
+msgstr "Tury pisane pod nadzorem, bez internetu. Ich zgłoszenia są kotwicą stylu każdego uczestnika."
+
+msgid "generated by the staff"
+msgstr "wygenerowane przez kadrę"
+
+msgid "confirmed case"
+msgstr "potwierdzony przypadek"
+
+msgid "problem"
+msgstr "zadanie"
+
+msgid "source"
+msgstr "źródło"
+
+msgid "model"
+msgstr "model"
+
+msgid "prompt"
+msgstr "prompt"
+
+msgid "code"
+msgstr "kod"
+
+msgid "No concerns"
+msgstr "Bez zastrzeżeń"
+
+msgid "To talk with"
+msgstr "Do rozmowy"
+
+msgid "Confirmed"
+msgstr "Potwierdzone"
+
+msgid "submission"
+msgstr "zgłoszenie"
+
+msgid "verdict"
+msgstr "werdykt"
+
+msgid "note"
+msgstr "notatka"
+
+msgid "LLM detection"
+msgstr "Wykrywanie LLM"
+
+msgid "Recomputed."
+msgstr "Przeliczono."
+
+msgid "Reference deleted."
+msgstr "Usunięto referencję."
+
+msgid "Decision saved."
+msgstr "Zapisano decyzję."
+
+msgid "Settings saved."
+msgstr "Zapisano ustawienia."
+
+msgid "Invalid settings."
+msgstr "Niepoprawne ustawienia."
+
+msgid "Round started"
+msgstr "Początek tury"
+
+msgid "Opened the statement"
+msgstr "Otwarcie treści"
+
+#, python-format
+msgid "Added %(count)d references."
+msgstr "Dodano referencje: %(count)d."
+
+msgid "Recompute"
+msgstr "Przelicz"
+
+msgid "LLM references"
+msgstr "Referencje LLM"
+
+msgid "Computed"
+msgstr "Przeliczono"
+
+msgid "Review queue"
+msgstr "Kolejka weryfikacji"
+
+msgid "Participant"
+msgstr "Uczestnik"
+
+msgid "Sum of the risks of the three worst problems."
+msgstr "Suma ryzyka trzech najgorszych zadań."
+
+msgid "Score"
+msgstr "Wynik"
+
+msgid "Worst submissions"
+msgstr "Najgorsze zgłoszenia"
+
+msgid "Main signals"
+msgstr "Główne sygnały"
+
+msgid "Decision"
+msgstr "Decyzja"
+
+msgid "Few earlier submissions on other problems; deviation from own style weighs less."
+msgstr "Mało wcześniejszych zgłoszeń do innych zadań; odchylenie od własnego stylu waży mniej."
+
+msgid "profile uncertain"
+msgstr "profil niepewny"
+
+msgid "No submissions yet."
+msgstr "Nie ma jeszcze zgłoszeń."
+
+msgid "Settings"
+msgstr "Ustawienia"
+
+msgid "Save"
+msgstr "Zapisz"
+
+msgid "Participants ordered by how much their code looks generated by an LLM. A high score is a reason to talk with the participant (for example: \"explain this part\"), never a proof by itself."
+msgstr "Uczestnicy według tego, jak bardzo ich kod wygląda na wygenerowany przez LLM. Wysoki wynik to powód do rozmowy z uczestnikiem (np. „wytłumacz ten fragment”), nigdy sam w sobie dowód."
+
+msgid "Problem statement views are not logged, so the timing signals count from the start of the round. Add <code>oioioi.llmdetect.middleware.ProblemViewMiddleware</code> to <code>MIDDLEWARE</code> to log them."
+msgstr "Otwarcia treści zadań nie są zapisywane, więc sygnały czasowe liczą się od początku tury. Dodaj <code>oioioi.llmdetect.middleware.ProblemViewMiddleware</code> do <code>MIDDLEWARE</code>, żeby je zapisywać."
+
+msgid "Solutions generated by LLMs for each problem, before the round. Without them only the style and behaviour signals work."
+msgstr "Rozwiązania wygenerowane przez LLM dla każdego zadania przed turą. Bez nich działają tylko sygnały stylu i zachowania."
+
+msgid "%(counter)s reference"
+msgid_plural "%(counter)s references"
+msgstr[0] "%(counter)s referencja"
+msgstr[1] "%(counter)s referencje"
+msgstr[2] "%(counter)s referencji"
+
+msgid "Add"
+msgstr "Dodaj"
+
+msgid "Delete this reference?"
+msgstr "Usunąć tę referencję?"
+
+msgid "delete"
+msgstr "usuń"
+
+msgid "No references yet."
+msgstr "Nie ma jeszcze referencji."
+
+msgid "Before the round, generate tens of solutions per problem with the models participants use and with prompts that imitate them (\"write like a high-school student, short, no comments\", a sample of the participant's code as a style to copy, fixing a wrong solution). Keep wrong solutions too: their mistakes are a strong fingerprint. Only problem statements go to external models, never participants' code."
+msgstr "Przed turą wygeneruj kilkadziesiąt rozwiązań każdego zadania modelami, których używają uczestnicy, i promptami, które ich udają („pisz jak licealista, krótko, bez komentarzy”, przykładowy kod uczestnika jako wzorzec stylu, poprawa błędnego rozwiązania). Zachowuj też błędne rozwiązania: ich pomyłki to wyraźny odcisk palca. Do zewnętrznych modeli trafiają tylko treści zadań, nigdy kod uczestników."
+
+msgid "Submissions"
+msgstr "Zgłoszenia"
+
+msgid "Date"
+msgstr "Data"
+
+msgid "Risk"
+msgstr "Ryzyko"
+
+msgid "Signals"
+msgstr "Sygnały"
+
+msgid "supervised"
+msgstr "nadzorowane"
+
+msgid "Sent after the round; timing, score and similarity to other participants are not counted."
+msgstr "Wysłane po turze; czas, wynik i podobieństwo do innych uczestników nie są brane pod uwagę."
+
+msgid "after round"
+msgstr "po turze"
+
+msgid "No submissions."
+msgstr "Brak zgłoszeń."
+
+msgid "Submission"
+msgstr "Zgłoszenie"
+
+msgid "No signals."
+msgstr "Brak sygnałów."
+
+msgid "Style profile"
+msgstr "Profil stylu"
+
+msgid "submissions on other problems"
+msgstr "zgłoszeń do innych zadań"
+
+msgid "confidence"
+msgstr "pewność"
+
+msgid "Usual LLM-likeness"
+msgstr "Zwykłe podobieństwo do LLM"
+
+msgid "Differs most from own style in"
+msgstr "Najbardziej odbiega od własnego stylu w"
+
+msgid "Most similar submission of another participant"
+msgstr "Najbardziej podobne zgłoszenie innego uczestnika"
+
+msgid "Timeline"
+msgstr "Oś czasu"
+
+msgid "This submission"
+msgstr "To zgłoszenie"
+
+msgid "Code unavailable."
+msgstr "Kod niedostępny."
+
+msgid "Nearest LLM reference"
+msgstr "Najbliższa referencja LLM"
+
+msgid "No references for this problem."
+msgstr "Brak referencji dla tego zadania."
+
+msgid "Usual own code"
+msgstr "Zwykły własny kod"
+
+msgid "No submissions on other problems."
+msgstr "Brak zgłoszeń do innych zadań."
+
+msgid "Decisions"
+msgstr "Decyzje"
+
+msgid "None yet."
+msgstr "Jeszcze żadnych."
+
+msgid "Save decision"
+msgstr "Zapisz decyzję"
+
+msgid "Decide only after talking with the participant."
+msgstr "Decyduj dopiero po rozmowie z uczestnikiem."
+
+#, python-format
+msgid "A disqualification is added separately, in <a href=\"%(disq_url)s\">disqualifications</a>."
+msgstr "Dyskwalifikację dodaje się osobno, w <a href=\"%(disq_url)s\">dyskwalifikacjach</a>."

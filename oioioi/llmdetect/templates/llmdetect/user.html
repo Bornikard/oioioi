@@ -1,0 +1,112 @@
+{% extends "base-with-menu.html" %}
+{% load i18n llmdetect_tags %}
+
+{% block title %}{% trans "LLM detection" %} – {{ profile_user.get_full_name|default:profile_user.username }}{% endblock %}
+
+{% block styles %}
+{{ block.super }}
+<style>
+    .llm-code { max-height: 32rem; overflow: auto; font-size: .8rem; white-space: pre; background: var(--bs-tertiary-bg); padding: .5rem; }
+    .llm-bar { height: .5rem; background: var(--bs-danger); border-radius: .25rem; }
+</style>
+{% endblock %}
+
+{% block main-content %}
+<p><a href="{% url 'llmdetect_panel' contest_id=contest.id %}">← {% trans "Review queue" %}</a></p>
+<h1>{{ profile_user.get_full_name|default:profile_user.username }} <small class="text-muted fs-6">{{ profile_user.username }}</small></h1>
+
+<h2 class="h4 mt-3">{% trans "Submissions" %}</h2>
+<div class="table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr><th>{% trans "Problem" %}</th><th>{% trans "Date" %}</th><th>{% trans "Score" %}</th><th>{% trans "Risk" %}</th><th>{% trans "Signals" %}</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+        {% with a=row.assessment %}
+        <tr{% if selected and a.id == selected.id %} class="table-active"{% endif %}>
+            <td><a href="{{ row.url }}">{{ a.submission.problem_instance.short_name }}</a>{% if a.context.trusted %} <span class="badge text-bg-light border">{% trans "supervised" %}</span>{% endif %}{% if not a.context.during_round %} <span class="badge text-bg-light border" title="{% trans 'Sent after the round; timing, score and similarity to other participants are not counted.' %}">{% trans "after round" %}</span>{% endif %}</td>
+            <td class="text-nowrap small">{{ a.submission.date|date:"d.m H:i" }}</td>
+            <td class="small">{{ a.submission.get_score_display|default:"" }}</td>
+            <td><span class="badge text-bg-{{ a.risk|risk_class }}">{{ a.risk|percent }}</span></td>
+            <td class="small">{% for s in row.signals|slice:":3" %}{% if s.contribution > 0.2 %}{{ s.label }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}</td>
+        </tr>
+        {% endwith %}
+    {% empty %}
+        <tr><td colspan="5" class="text-muted">{% trans "No submissions." %}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% if selected %}
+<h2 class="h4 mt-4">
+    {% trans "Submission" %} <a href="{% url 'submission' contest_id=contest.id submission_id=selected.submission_id %}">#{{ selected.submission_id }}</a>
+    ({{ selected.submission.problem_instance.short_name }}) –
+    <span class="badge text-bg-{{ selected.risk|risk_class }}">{{ selected.risk|percent }}</span>
+</h2>
+
+<div class="row">
+    <div class="col-lg-7">
+        <table class="table table-sm">
+            {% for s in selected_signals %}
+            <tr>
+                <td class="text-nowrap">{{ s.label }}</td>
+                <td style="width: 6rem"><div class="llm-bar" style="width: {{ s.contribution|bar_width }}%"></div></td>
+                <td class="small">{{ s.text }}</td>
+            </tr>
+            {% empty %}
+            <tr><td class="text-muted">{% trans "No signals." %}</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+    <div class="col-lg-5 small">
+        <p>
+            {% trans "Style profile" %}: {{ profile.weight|floatformat:1 }} {% trans "submissions on other problems" %},
+            {% trans "confidence" %} {{ profile.confidence|percent }}{% if profile.confidence < low_confidence %} <span class="badge text-bg-light border">{% trans "profile uncertain" %}</span>{% endif %}.
+            {% trans "Usual LLM-likeness" %}: {{ profile.style|percent }}.
+        </p>
+        {% if profile_features %}<p>{% trans "Differs most from own style in" %}: {{ profile_features|join:", " }}.</p>{% endif %}
+        {% if peer and peer_user %}<p>{% trans "Most similar submission of another participant" %}: <a href="{% url 'llmdetect_user' contest_id=contest.id user_id=peer_user.id %}?submission={{ peer.submission }}">{{ peer_user.get_full_name|default:peer_user.username }} #{{ peer.submission }}</a> ({{ peer.similarity|percent }}).</p>{% endif %}
+        <h3 class="h6">{% trans "Timeline" %}</h3>
+        <ul class="list-unstyled">
+            {% for date, label, a in timeline %}
+            <li>{{ date|date:"d.m H:i:s" }} – {% if a %}<a href="{% url 'llmdetect_user' contest_id=contest.id user_id=profile_user.id %}?submission={{ a.submission_id }}">#{{ a.submission_id }}</a> {{ label }} <span class="badge text-bg-{{ a.risk|risk_class }}">{{ a.risk|percent }}</span>{% else %}{{ label }}{% endif %}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<div class="row g-2">
+    <div class="col-lg-4">
+        <h3 class="h6">{% trans "This submission" %}</h3>
+        <div class="llm-code">{{ selected_source|default:_("Code unavailable.") }}</div>
+    </div>
+    <div class="col-lg-4">
+        <h3 class="h6">{% trans "Nearest LLM reference" %}{% if reference %} ({{ reference.model_name|default:reference.get_kind_display }}{% if reference.prompt_variant %}, {{ reference.prompt_variant }}{% endif %}, {{ selected.context.reference.similarity|percent }}){% endif %}</h3>
+        {% if reference %}<div class="llm-code">{{ reference.source }}</div>{% else %}<p class="text-muted small">{% trans "No references for this problem." %}</p>{% endif %}
+    </div>
+    <div class="col-lg-4">
+        <h3 class="h6">{% trans "Usual own code" %}{% if typical %} (<a href="{% url 'llmdetect_user' contest_id=contest.id user_id=profile_user.id %}?submission={{ typical.submission_id }}">{{ typical.submission.problem_instance.short_name }}</a>){% endif %}</h3>
+        {% if typical_source %}<div class="llm-code">{{ typical_source }}</div>{% else %}<p class="text-muted small">{% trans "No submissions on other problems." %}</p>{% endif %}
+    </div>
+</div>
+{% endif %}
+
+<h2 class="h4 mt-4">{% trans "Decisions" %}</h2>
+<ul>
+    {% for d in decisions %}
+    <li>{{ d.date|date:"d.m H:i" }} – <strong>{{ d.get_verdict_display }}</strong>{% if d.submission %} (#{{ d.submission_id }} {{ d.submission.problem_instance.short_name }}){% endif %}, {{ d.reviewer.get_full_name|default:d.reviewer.username }}{% if d.note %}: {{ d.note }}{% endif %}</li>
+    {% empty %}
+    <li class="text-muted">{% trans "None yet." %}</li>
+    {% endfor %}
+</ul>
+<form method="post" class="row g-2 align-items-end">
+    {% csrf_token %}
+    <div class="col-md-3">{{ form.verdict.label_tag }} {{ form.verdict }}</div>
+    <div class="col-md-3">{{ form.submission.label_tag }} {{ form.submission }}</div>
+    <div class="col-md-4">{{ form.note.label_tag }} {{ form.note }}</div>
+    <div class="col-md-2"><button type="submit" class="btn btn-primary">{% trans "Save decision" %}</button></div>
+    <div class="form-text">{{ form.submission.help_text }}
+    {% blocktrans %}Decide only after talking with the participant.{% endblocktrans %}
+    {% if disqualification_enabled %}{% url 'oioioiadmin:disqualification_disqualification_add' as disq_url %}{% blocktrans %}A disqualification is added separately, in <a href="{{ disq_url }}">disqualifications</a>.{% endblocktrans %}{% endif %}</div>
+</form>
+{% endblock %}

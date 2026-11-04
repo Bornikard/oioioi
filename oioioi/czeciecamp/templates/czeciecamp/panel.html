@@ -19,6 +19,7 @@
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'oioioiadmin:contests_probleminstance_changelist' %}">{% trans "Problems" %}</a>
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'oioioiadmin:contests_contest_change' contest.id %}">{% trans "Contest settings" %}</a>
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'default_ranking' contest_id=contest.id %}">{% trans "Rankings" %}</a>
+    {% if llmdetect_enabled %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'llmdetect_panel' contest_id=contest.id %}">{% trans "LLM detection" %}</a>{% endif %}
 </p>
 
 <h2 class="h4 mt-4">{% trans "Rounds" %}</h2>
