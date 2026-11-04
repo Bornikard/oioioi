@@ -67,7 +67,26 @@ First try          Full score at once on a problem few solved (weak).
 Above own level    Solved a hard problem while weak on the others.
 Pasted             Pasted, while the participant usually uploads files.
 Like a peer        Shares much code with another participant.
+Chat leftovers     ```, "Here is", "Time complexity", "Step 1:"... in the code.
+Web characters     No-break and zero-width spaces, typographic quotes...
+Broken habits      Habits the participant keeps, changed (see below).
+Unfamiliar names   Few identifiers the participant has used before.
 =================  =========================================================
+
+*Habits* (``habits.py``) are things a person writes the same way every
+time: the template before the first function, the set of macros,
+``bits/stdc++.h`` or separate headers, ``using namespace std`` or ``std::``,
+the ``long long`` alias, the exact fast IO line, global arrays or local
+vectors, how the size constant is written, the ``main`` signature, a
+``solve()``/test loop, line endings (uploaded files only: pasted code
+always arrives with CRLF), indentation, braces and ``else``, spacing after
+``if``, around operators and after commas, naming style and function
+names. A habit counts when it is kept in at least 80% of at least 3 other
+submissions of the participant. A break weighs more when participants
+rarely break that habit, more when it goes the LLM way (e.g. to
+``cin.tie(nullptr)``), and is ignored when many participants break it on
+the same problem (the problem forces it). The participant page shows the
+habits of a submission next to the usual ones.
 
 The *profile* of a participant is the weighted mean and variance of their
 style vectors on other problems, shrunk towards the population (a prior

@@ -1,6 +1,6 @@
 """Human-readable names and explanations of the signals."""
 
-from django.utils.translation import gettext
+from django.utils.translation import gettext, pgettext_lazy
 from django.utils.translation import gettext_lazy as _
 
 from oioioi.llmdetect.features import STYLE_FEATURES
@@ -17,6 +17,88 @@ SIGNAL_LABELS = {
     "score_surprise": _("Above own level"),
     "pasted": _("Pasted, usually uploads files"),
     "peer_similarity": _("Similar to another participant"),
+    "chat_leftovers": _("Leftovers of a chat answer"),
+    "paste_characters": _("Characters from a web page"),
+    "habit_break": _("Broken habits"),
+    "vocabulary": _("Unfamiliar names"),
+}
+
+HABIT_LABELS = {
+    "template": pgettext_lazy("llmdetect", "template"),
+    "macros": pgettext_lazy("llmdetect", "macros"),
+    "includes": pgettext_lazy("llmdetect", "includes"),
+    "namespace": pgettext_lazy("llmdetect", "std namespace"),
+    "ll_alias": pgettext_lazy("llmdetect", "long long alias"),
+    "fast_io": pgettext_lazy("llmdetect", "fast IO"),
+    "storage": pgettext_lazy("llmdetect", "arrays"),
+    "size_constant": pgettext_lazy("llmdetect", "size constant"),
+    "main": pgettext_lazy("llmdetect", "main"),
+    "test_loop": pgettext_lazy("llmdetect", "test cases"),
+    "line_endings": pgettext_lazy("llmdetect", "line endings"),
+    "indent": pgettext_lazy("llmdetect", "indentation"),
+    "braces": pgettext_lazy("llmdetect", "braces"),
+    "else": pgettext_lazy("llmdetect", "else"),
+    "keyword_space": pgettext_lazy("llmdetect", "space after if/for"),
+    "operator_space": pgettext_lazy("llmdetect", "spaces around operators"),
+    "comma_space": pgettext_lazy("llmdetect", "space after commas"),
+    "naming": pgettext_lazy("llmdetect", "naming"),
+    "function_names": pgettext_lazy("llmdetect", "function names"),
+}
+
+# Habit values that are descriptions, not code.
+HABIT_VALUE_LABELS = {
+    "separate": pgettext_lazy("llmdetect", "separate headers"),
+    "global arrays": pgettext_lazy("llmdetect", "global arrays"),
+    "vectors": pgettext_lazy("llmdetect", "local vectors"),
+    "none": pgettext_lazy("llmdetect", "none"),
+    "plain": pgettext_lazy("llmdetect", "single test"),
+    "solve()": pgettext_lazy("llmdetect", "solve()"),
+    "test loop in main": pgettext_lazy("llmdetect", "test loop in main"),
+    "solve() in a test loop": pgettext_lazy("llmdetect", "solve() in a test loop"),
+    "tabs": pgettext_lazy("llmdetect", "tabs"),
+    "own line": pgettext_lazy("llmdetect", "on their own line"),
+    "same line": pgettext_lazy("llmdetect", "on the same line"),
+    "mixed": pgettext_lazy("llmdetect", "mixed"),
+    "spaced": pgettext_lazy("llmdetect", "spaces"),
+    "tight": pgettext_lazy("llmdetect", "no spaces"),
+    "short names": pgettext_lazy("llmdetect", "short names"),
+    "camelCase": "camelCase",
+    "snake_case": "snake_case",
+    "plain words": pgettext_lazy("llmdetect", "plain words"),
+    "descriptive": pgettext_lazy("llmdetect", "descriptive"),
+    "short": pgettext_lazy("llmdetect", "short"),
+    "words": pgettext_lazy("llmdetect", "words"),
+}
+
+CHAT_LABELS = {
+    "markdown fence": _("a ``` code fence"),
+    "here is": _('"Here is"'),
+    "explanation": _('"Explanation:"'),
+    "complexity": _('"Time complexity"'),
+    "big O": _("O(...) notation"),
+    "step N": _('"Step 1:"'),
+    "example usage": _('"Example usage"'),
+    "markdown": _("markdown formatting"),
+    "approach": _('"Approach:"'),
+    "edge case": _('"edge cases"'),
+}
+
+PASTE_CHAR_LABELS = {
+    "no-break space": _("no-break spaces"),
+    "narrow no-break space": _("narrow no-break spaces"),
+    "figure space": _("figure spaces"),
+    "zero-width space": _("zero-width spaces"),
+    "zero-width non-joiner": _("zero-width characters"),
+    "zero-width joiner": _("zero-width characters"),
+    "word joiner": _("zero-width characters"),
+    "zero-width no-break space": _("zero-width characters"),
+    "invisible character": _("invisible characters"),
+    "typographic quote": _("typographic quotes"),
+    "em dash": _("em dashes"),
+    "en dash": _("en dashes"),
+    "arrow": _("arrows"),
+    "≤ sign": _("≤ signs"),
+    "≥ sign": _("≥ signs"),
 }
 
 FEATURE_LABELS = {
@@ -59,6 +141,42 @@ FEATURE_LABELS = {
 
 def feature_label(name):
     return FEATURE_LABELS.get(name, name)
+
+
+def habit_label(name):
+    return HABIT_LABELS.get(name, name)
+
+
+def habit_value(value, quote=False):
+    """A habit value for display: lists joined, descriptions translated,
+    code quoted if ``quote``.
+    """
+    if value is None:
+        return "–"
+    if isinstance(value, list):
+        if not value:
+            return "–"
+        return " · ".join(f'"{v}"' if quote else v for v in value)
+    if value.endswith(" spaces") and value[:1].isdigit():
+        return gettext("%(width)s spaces") % {"width": value.split()[0]}
+    if value in HABIT_VALUE_LABELS:
+        return str(HABIT_VALUE_LABELS[value])
+    return f'"{value}"' if quote else value
+
+
+def describe_habit(row):
+    if row["habit"] in ("template", "macros"):
+        return gettext("%(habit)s: kept %(share)s of the usual lines (%(usual)s)") % {
+            "habit": habit_label(row["habit"]),
+            "share": _percent(row["share"]),
+            "usual": habit_value(row["usual"][:3], quote=True),
+        }
+    return gettext("%(habit)s: usually %(usual)s (%(share)s), now %(current)s") % {
+        "habit": habit_label(row["habit"]),
+        "usual": habit_value(row["usual"], quote=True),
+        "share": _percent(row["share"]),
+        "current": habit_value(row["current"], quote=True),
+    }
 
 
 def _percent(value):
@@ -110,6 +228,18 @@ def describe(name, detail, users=None):
         }
     if name == "pasted":
         return gettext("Pasted into the form; pastes only %(rate)s of other submissions.") % {"rate": _percent(d.get("rate", 0))}
+    if name == "chat_leftovers":
+        return gettext("Found: %(found)s.") % {"found": ", ".join(str(CHAT_LABELS.get(f, f)) for f in d.get("found", []))}
+    if name == "paste_characters":
+        return gettext("Found: %(found)s.") % {"found": ", ".join(sorted({str(PASTE_CHAR_LABELS.get(f, f)) for f in d.get("found", [])}))}
+    if name == "habit_break":
+        return "; ".join(describe_habit(row) for row in d.get("broken", [])) + "."
+    if name == "vocabulary":
+        return gettext("%(overlap)s of the names were used before by this participant (usually %(median)s). New: %(new)s.") % {
+            "overlap": _percent(d.get("overlap", 0)),
+            "median": _percent(d.get("median", 0)),
+            "new": ", ".join(d.get("new", [])),
+        }
     if name == "peer_similarity":
         user = users.get(d.get("user"))
         return gettext("%(similarity)s in common with a submission of %(user)s.") % {
@@ -134,6 +264,26 @@ def signal_rows(assessment, users=None):
             }
         )
     rows.sort(key=lambda row: -row["contribution"])
+    return rows
+
+
+def habit_rows(assessment):
+    """Every habit compared for a submission, broken ones first."""
+    rows = []
+    for row in assessment.context.get("habits", []):
+        rows.append(
+            {
+                "label": habit_label(row["habit"]),
+                "usual": habit_value(row["usual"]),
+                "share": row["share"],
+                "current": habit_value(row["current"]),
+                "broken": row["broken"],
+                "counted": bool(row.get("strength")),
+                "problem": row.get("problem", False),
+                "set": row["habit"] in ("template", "macros"),
+            }
+        )
+    rows.sort(key=lambda row: (not row["broken"], str(row["label"])))
     return rows
 
 

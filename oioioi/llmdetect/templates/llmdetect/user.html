@@ -75,6 +75,26 @@
     </div>
 </div>
 
+{% if habits %}
+<h3 class="h6 mt-2">{% trans "Habits" %}</h3>
+<div class="table-responsive">
+<table class="table table-sm small align-middle">
+    <thead><tr><th>{% trans "Habit" context "llmdetect" %}</th><th>{% trans "Usually" context "llmdetect" %}</th><th title="{% trans 'Share of the other submissions with the usual value (for the template and macros: share of the usual lines kept here).' %}">%</th><th>{% trans "This submission" %}</th><th></th></tr></thead>
+    <tbody>
+    {% for h in habits %}
+        <tr{% if h.counted %} class="table-danger"{% endif %}>
+            <td>{{ h.label }}</td>
+            <td><code>{{ h.usual }}</code></td>
+            <td>{{ h.share|percent }}</td>
+            <td>{% if h.set and h.current != "–" %}{% trans "new" context "llmdetect" %}: {% endif %}<code>{{ h.current }}</code></td>
+            <td class="text-nowrap">{% if h.counted %}✗{% elif h.problem %}<span class="text-muted" title="{% trans 'Many participants changed this on this problem, so it is not counted.' %}">{% trans "forced by the problem" context "llmdetect" %}</span>{% elif h.broken %}<span class="text-muted">{% trans "changed" context "llmdetect" %}</span>{% endif %}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+
 <div class="row g-2">
     <div class="col-lg-4">
         <h3 class="h6">{% trans "This submission" %}</h3>

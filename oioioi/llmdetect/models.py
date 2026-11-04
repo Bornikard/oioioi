@@ -46,6 +46,8 @@ class SubmissionFeatures(models.Model):
     fingerprints = models.JSONField()
     line_hashes = models.JSONField()
     code_lines = models.IntegerField()
+    # Coding habits, see habits.extract_habits.
+    habits = models.JSONField(default=dict)
     computed_at = models.DateTimeField(default=timezone.now)
 
 

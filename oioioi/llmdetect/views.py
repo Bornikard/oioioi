@@ -15,7 +15,7 @@ from oioioi.base.permissions import enforce_condition
 from oioioi.contests.menu import contest_admin_menu_registry
 from oioioi.contests.models import ProblemInstance
 from oioioi.contests.utils import contest_exists, is_contest_admin
-from oioioi.llmdetect.explain import SIGNAL_LABELS, profile_features, signal_rows
+from oioioi.llmdetect.explain import SIGNAL_LABELS, habit_rows, profile_features, signal_rows
 from oioioi.llmdetect.forms import DecisionForm, ReferenceForm, SettingsForm
 from oioioi.llmdetect.models import LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, get_config, mark_dirty
 from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, read_source, update_if_needed, user_rankings
@@ -239,6 +239,7 @@ def _comparison(contest, user, selected, assessments, users):
         "timeline": timeline,
         "profile": profile,
         "profile_features": profile_features(selected),
+        "habits": habit_rows(selected),
         "peer": selected.context.get("peer"),
         "peer_user": users.get(selected.context.get("peer", {}).get("user")),
     }

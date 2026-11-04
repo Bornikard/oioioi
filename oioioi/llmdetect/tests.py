@@ -19,7 +19,8 @@ from oioioi.contests.models import Contest, ContestPermission, ProblemInstance, 
 from oioioi.contests.scores import IntegerScore
 from oioioi.llmdetect import features as F
 from oioioi.llmdetect.controllers import LLMDetectContestControllerMixin
-from oioioi.llmdetect.explain import SIGNAL_LABELS
+from oioioi.llmdetect.explain import HABIT_LABELS, SIGNAL_LABELS, describe, habit_value
+from oioioi.llmdetect.habits import extract_habits
 from oioioi.llmdetect.middleware import ProblemViewMiddleware
 from oioioi.llmdetect.models import LLMDetectConfig, LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, SubmissionFeatures
 from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, compute_features, needs_update, user_rankings
@@ -159,12 +160,62 @@ class TestFeatures(SimpleTestCase):
     def test_polish_translations(self):
         with translation.override("pl"):
             self.assertEqual(str(SIGNAL_LABELS["llm_style"]), "Styl typowy dla LLM")
+            self.assertEqual(str(HABIT_LABELS["includes"]), "nagłówki")
+            self.assertEqual(habit_value("none"), "brak")
 
     def test_language_and_style_vector(self):
         self.assertEqual(F.language_of("__pasted_code.py"), F.PYTHON)
         self.assertEqual(F.language_of("a.cpp"), F.C_FAMILY)
         vector = F.style_vector(F.extract_features(HUMAN_BFS, F.C_FAMILY))
         self.assertEqual(len(vector), len(F.STYLE_FEATURES))
+
+
+class TestHabits(SimpleTestCase):
+    def test_habits_of_typical_code(self):
+        human = extract_habits(HUMAN_BFS, F.C_FAMILY)["values"]
+        llm = extract_habits(LLM_BFS, F.C_FAMILY)["values"]
+        expected = {
+            "includes": ("bits/stdc++.h", "separate"),
+            "namespace": ("using namespace std;", "std::"),
+            "fast_io": ("ios_base::sync_with_stdio(0); cin.tie(0)", "std::ios::sync_with_stdio(false); std::cin.tie(nullptr)"),
+            "storage": ("global arrays", "vectors"),
+            "size_constant": ("N = 1eX+c", None),
+            "keyword_space": ("if(", "if ("),
+            "operator_space": ("tight", "spaced"),
+            "naming": ("short names", "camelCase"),
+            "main": ("int main()", "int main()"),
+            "line_endings": ("LF", "LF"),
+        }
+        for habit, (human_value, llm_value) in expected.items():
+            self.assertEqual((human[habit], llm[habit]), (human_value, llm_value), habit)
+        self.assertEqual(extract_habits(HUMAN_BFS, F.C_FAMILY)["macros"], ["pb"])
+
+    def test_aliases_tests_and_functions(self):
+        code = "#include <bits/stdc++.h>\ntypedef long long ll;\nvoid solve(){ll x;}\nsigned main(){int t;cin>>t;while(t--)solve();}\n"
+        values = extract_habits(code, F.C_FAMILY)["values"]
+        self.assertEqual(values["ll_alias"], "typedef long long ll;")
+        self.assertEqual(values["test_loop"], "solve() in a test loop")
+        self.assertEqual(values["main"], "signed main()")
+        self.assertEqual(values["function_names"], "short")
+        template = extract_habits(code, F.C_FAMILY)["template"]
+        self.assertEqual(template, ["#include<bits/stdc++.h>", "typedef long long ll;"])
+
+    def test_line_endings_and_indentation(self):
+        code = "int main() {\r\n\tint a;\r\n\tint b;\r\n\treturn 0;\r\n}\r\n"
+        self.assertEqual(extract_habits(code, F.C_FAMILY)["values"]["line_endings"], "CRLF")
+        self.assertEqual(extract_habits(code, F.C_FAMILY)["values"]["indent"], "tabs")
+        # A browser sends a pasted form field with CRLF, whatever the author uses.
+        self.assertNotIn("line_endings", extract_habits(code, F.C_FAMILY, pasted=True)["values"])
+
+    def test_chat_leftovers_and_paste_characters(self):
+        answer = "Here is the solution:\n```cpp\n// Time complexity: O(n log n)\nint main() {\n    int\u00a0n;\n}\n```\n"
+        habits = extract_habits(answer, F.C_FAMILY)
+        self.assertEqual(set(habits["chat"]), {"markdown fence", "complexity", "big O"})
+        self.assertEqual(habits["paste_chars"], ["no-break space"])
+        clean = extract_habits("\ufeff" + HUMAN_BFS, F.C_FAMILY)
+        self.assertEqual((clean["chat"], clean["paste_chars"]), ([], []))
+        # Prose in code is not a chat leftover, comments are searched.
+        self.assertEqual(extract_habits("// here is the dp\nint main(){}", F.C_FAMILY)["chat"], ["here is"])
 
 
 class LLMDetectTestCase(TestCase):
@@ -292,6 +343,37 @@ class TestAssessment(LLMDetectTestCase):
             self.assertEqual(assessment.context["peer"]["similarity"], 1.0)
             self.assertNotIn("peer_similarity", assessment.signals)
             self.assertNotIn("burst", assessment.signals)
+
+    def test_broken_habits_and_new_names(self):
+        submission = self._camp()
+        assess_contest(self.contest)
+        assessment = RiskAssessment.objects.get(submission=submission)
+        broken = {row["habit"] for row in assessment.signals["habit_break"]["detail"]["broken"]}
+        self.assertTrue({"includes", "namespace", "ll_alias", "template", "naming"} <= broken)
+        self.assertIn("includes: usually", describe("habit_break", assessment.signals["habit_break"]["detail"]))
+        self.assertIn("numVertices", assessment.signals["vocabulary"]["detail"]["new"])
+        others = RiskAssessment.objects.filter(contest=self.contest).exclude(submission=submission)
+        self.assertFalse([a for a in others if "habit_break" in a.signals or "vocabulary" in a.signals])
+
+    def test_habit_changed_by_everybody_on_a_problem_is_not_counted(self):
+        for i, user in enumerate(self.humans):
+            for day, pi in enumerate(self.pis[:3]):
+                self._submit(user, pi, human_code(f"{i}-{day}"), minutes=90)
+            # E.g. the statement suggests a template with tabs.
+            self._submit(user, self.pis[3], human_code(f"{i}-3").replace("    ", "\t"), minutes=100)
+        assess_contest(self.contest)
+        for assessment in RiskAssessment.objects.filter(submission__problem_instance=self.pis[3]):
+            self.assertNotIn("habit_break", assessment.signals)
+            indent = next(row for row in assessment.context["habits"] if row["habit"] == "indent")
+            self.assertTrue(indent["broken"] and indent["problem"])
+
+    def test_chat_answer_pasted_as_a_whole(self):
+        answer = "Here is the solution:\n```cpp\n" + LLM_BFS + "```\nExplanation: BFS.\n"
+        submission = self._camp(answer.replace("int current", "int\u00a0current"))
+        assess_contest(self.contest)
+        signals = RiskAssessment.objects.get(submission=submission).signals
+        self.assertEqual(signals["chat_leftovers"]["value"], 1.0)
+        self.assertGreater(signals["paste_characters"]["value"], 0.8)
 
 
 class TestHooks(LLMDetectTestCase):

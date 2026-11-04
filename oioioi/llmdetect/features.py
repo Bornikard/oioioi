@@ -12,7 +12,7 @@ import zlib
 from collections import Counter
 
 # Bump when the features or fingerprints change, so stored ones get recomputed.
-FEATURES_VERSION = 1
+FEATURES_VERSION = 2
 
 C_FAMILY = "c"
 PYTHON = "python"

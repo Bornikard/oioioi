@@ -38,6 +38,236 @@ msgstr "Wklejone, zwykle wysyła pliki"
 msgid "Similar to another participant"
 msgstr "Podobne do innego uczestnika"
 
+msgid "Leftovers of a chat answer"
+msgstr "Pozostałości odpowiedzi z czatu"
+
+msgid "Characters from a web page"
+msgstr "Znaki ze strony internetowej"
+
+msgid "Broken habits"
+msgstr "Złamane nawyki"
+
+msgid "Unfamiliar names"
+msgstr "Nieznane nazwy"
+
+msgctxt "llmdetect"
+msgid "template"
+msgstr "szablon"
+
+msgctxt "llmdetect"
+msgid "macros"
+msgstr "makra"
+
+msgctxt "llmdetect"
+msgid "includes"
+msgstr "nagłówki"
+
+msgctxt "llmdetect"
+msgid "std namespace"
+msgstr "przestrzeń nazw std"
+
+msgctxt "llmdetect"
+msgid "long long alias"
+msgstr "alias long long"
+
+msgctxt "llmdetect"
+msgid "fast IO"
+msgstr "szybkie wejście/wyjście"
+
+msgctxt "llmdetect"
+msgid "arrays"
+msgstr "tablice"
+
+msgctxt "llmdetect"
+msgid "size constant"
+msgstr "stała rozmiaru"
+
+msgctxt "llmdetect"
+msgid "main"
+msgstr "main"
+
+msgctxt "llmdetect"
+msgid "test cases"
+msgstr "testy w wejściu"
+
+msgctxt "llmdetect"
+msgid "line endings"
+msgstr "końce wierszy"
+
+msgctxt "llmdetect"
+msgid "indentation"
+msgstr "wcięcia"
+
+msgctxt "llmdetect"
+msgid "braces"
+msgstr "klamry"
+
+msgctxt "llmdetect"
+msgid "else"
+msgstr "else"
+
+msgctxt "llmdetect"
+msgid "space after if/for"
+msgstr "spacja po if/for"
+
+msgctxt "llmdetect"
+msgid "spaces around operators"
+msgstr "spacje wokół operatorów"
+
+msgctxt "llmdetect"
+msgid "space after commas"
+msgstr "spacja po przecinku"
+
+msgctxt "llmdetect"
+msgid "naming"
+msgstr "nazewnictwo"
+
+msgctxt "llmdetect"
+msgid "function names"
+msgstr "nazwy funkcji"
+
+msgctxt "llmdetect"
+msgid "separate headers"
+msgstr "osobne nagłówki"
+
+msgctxt "llmdetect"
+msgid "global arrays"
+msgstr "tablice globalne"
+
+msgctxt "llmdetect"
+msgid "local vectors"
+msgstr "lokalne vectory"
+
+msgctxt "llmdetect"
+msgid "none"
+msgstr "brak"
+
+msgctxt "llmdetect"
+msgid "single test"
+msgstr "jeden test"
+
+msgctxt "llmdetect"
+msgid "solve()"
+msgstr "solve()"
+
+msgctxt "llmdetect"
+msgid "test loop in main"
+msgstr "pętla testów w main"
+
+msgctxt "llmdetect"
+msgid "solve() in a test loop"
+msgstr "solve() w pętli testów"
+
+msgctxt "llmdetect"
+msgid "tabs"
+msgstr "tabulatory"
+
+msgctxt "llmdetect"
+msgid "on their own line"
+msgstr "w osobnym wierszu"
+
+msgctxt "llmdetect"
+msgid "on the same line"
+msgstr "w tym samym wierszu"
+
+msgctxt "llmdetect"
+msgid "mixed"
+msgstr "różnie"
+
+msgctxt "llmdetect"
+msgid "spaces"
+msgstr "spacje"
+
+msgctxt "llmdetect"
+msgid "no spaces"
+msgstr "bez spacji"
+
+msgctxt "llmdetect"
+msgid "short names"
+msgstr "krótkie nazwy"
+
+msgctxt "llmdetect"
+msgid "plain words"
+msgstr "zwykłe słowa"
+
+msgctxt "llmdetect"
+msgid "descriptive"
+msgstr "opisowe"
+
+msgctxt "llmdetect"
+msgid "short"
+msgstr "krótkie"
+
+msgctxt "llmdetect"
+msgid "words"
+msgstr "słowa"
+
+msgid "a ``` code fence"
+msgstr "znacznik bloku kodu ```"
+
+msgid "\"Here is\""
+msgstr "„Here is”"
+
+msgid "\"Explanation:\""
+msgstr "„Explanation:”"
+
+msgid "\"Time complexity\""
+msgstr "„Time complexity”"
+
+msgid "O(...) notation"
+msgstr "notacja O(...)"
+
+msgid "\"Step 1:\""
+msgstr "„Step 1:”"
+
+msgid "\"Example usage\""
+msgstr "„Example usage”"
+
+msgid "markdown formatting"
+msgstr "formatowanie markdown"
+
+msgid "\"Approach:\""
+msgstr "„Approach:”"
+
+msgid "\"edge cases\""
+msgstr "„edge cases”"
+
+msgid "no-break spaces"
+msgstr "twarde spacje"
+
+msgid "narrow no-break spaces"
+msgstr "wąskie twarde spacje"
+
+msgid "figure spaces"
+msgstr "spacje cyfrowe"
+
+msgid "zero-width spaces"
+msgstr "spacje zerowej szerokości"
+
+msgid "zero-width characters"
+msgstr "znaki zerowej szerokości"
+
+msgid "invisible characters"
+msgstr "niewidoczne znaki"
+
+msgid "typographic quotes"
+msgstr "cudzysłowy typograficzne"
+
+msgid "em dashes"
+msgstr "pauzy"
+
+msgid "en dashes"
+msgstr "półpauzy"
+
+msgid "arrows"
+msgstr "strzałki"
+
+msgid "≤ signs"
+msgstr "znaki ≤"
+
+msgid "≥ signs"
+msgstr "znaki ≥"
+
 msgid "comments per line"
 msgstr "komentarze na wiersz"
 
@@ -141,6 +371,18 @@ msgid "trailing spaces"
 msgstr "spacje na końcach wierszy"
 
 #, python-format
+msgid "%(habit)s: usually %(usual)s (%(share)s), now %(current)s"
+msgstr "%(habit)s: zwykle %(usual)s (%(share)s), teraz %(current)s"
+
+#, python-format
+msgid "%(width)s spaces"
+msgstr "%(width)s spacje"
+
+#, python-format
+msgid "%(habit)s: kept %(share)s of the usual lines (%(usual)s)"
+msgstr "%(habit)s: zostało %(share)s zwykłych wierszy (%(usual)s)"
+
+#, python-format
 msgid "%(similarity)s of the code matches an LLM reference (participants usually: %(baseline)s)."
 msgstr "%(similarity)s kodu pokrywa się z referencją LLM (u uczestników zwykle: %(baseline)s)."
 
@@ -175,6 +417,14 @@ msgstr "Zadanie rozwiązało %(rate)s uczestników; w pozostałych zadaniach ten
 #, python-format
 msgid "Pasted into the form; pastes only %(rate)s of other submissions."
 msgstr "Wklejone do formularza; wkleja tylko %(rate)s pozostałych zgłoszeń."
+
+#, python-format
+msgid "Found: %(found)s."
+msgstr "Znaleziono: %(found)s."
+
+#, python-format
+msgid "%(overlap)s of the names were used before by this participant (usually %(median)s). New: %(new)s."
+msgstr "%(overlap)s nazw było już wcześniej u tego uczestnika (zwykle %(median)s). Nowe: %(new)s."
 
 #, python-format
 msgid "%(similarity)s in common with a submission of %(user)s."
@@ -421,8 +671,17 @@ msgstr "Najbardziej podobne zgłoszenie innego uczestnika"
 msgid "Timeline"
 msgstr "Oś czasu"
 
+msgid "Habits"
+msgstr "Nawyki"
+
+msgid "Share of the other submissions with the usual value (for the template and macros: share of the usual lines kept here)."
+msgstr "Odsetek pozostałych zgłoszeń ze zwykłą wartością (dla szablonu i makr: odsetek zwykłych wierszy, które tu zostały)."
+
 msgid "This submission"
 msgstr "To zgłoszenie"
+
+msgid "Many participants changed this on this problem, so it is not counted."
+msgstr "Wielu uczestników zmieniło to w tym zadaniu, więc nie jest liczone."
 
 msgid "Code unavailable."
 msgstr "Kod niedostępny."
@@ -447,6 +706,26 @@ msgstr "Jeszcze żadnych."
 
 msgid "Save decision"
 msgstr "Zapisz decyzję"
+
+msgctxt "llmdetect"
+msgid "Habit"
+msgstr "Nawyk"
+
+msgctxt "llmdetect"
+msgid "Usually"
+msgstr "Zwykle"
+
+msgctxt "llmdetect"
+msgid "new"
+msgstr "nowe"
+
+msgctxt "llmdetect"
+msgid "forced by the problem"
+msgstr "wymuszone przez zadanie"
+
+msgctxt "llmdetect"
+msgid "changed"
+msgstr "zmienione"
 
 msgid "Decide only after talking with the participant."
 msgstr "Decyduj dopiero po rozmowie z uczestnikiem."

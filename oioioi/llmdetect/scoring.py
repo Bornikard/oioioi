@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from oioioi.contests.models import ContestPermission
 from oioioi.llmdetect.features import FEATURES_VERSION, analyze_source, containment, llm_style, style_vector
+from oioioi.llmdetect.habits import CATEGORICAL_HABITS, LLM_VALUES, extract_habits
 from oioioi.llmdetect.models import (
     LLMReferenceSolution,
     ProblemViewEvent,
@@ -51,6 +52,10 @@ DEFAULT_WEIGHTS = {
     "score_surprise": 1.0,
     "pasted": 0.5,
     "peer_similarity": 0.8,
+    "chat_leftovers": 3.0,
+    "paste_characters": 2.0,
+    "habit_break": 2.5,
+    "vocabulary": 1.0,
 }
 BIAS = -3.0
 # Submissions at or above this risk are flagged.
@@ -67,6 +72,40 @@ BOILERPLATE_FRACTION = 0.4
 MIN_VARIANCE = 0.02
 # A user's risk is the sum of their this many worst problems.
 USER_TOP_PROBLEMS = 3
+# A habit counts when kept in this share of at least this many other submissions.
+HABIT_STABILITY = 0.8
+HABIT_MIN_HISTORY = 3
+# How sure each chat leftover or pasted character alone is.
+CHAT_STRENGTH = {
+    "markdown fence": 1.0,
+    "here is": 0.9,
+    "explanation": 0.9,
+    "complexity": 0.8,
+    "example usage": 0.8,
+    "approach": 0.8,
+    "big O": 0.5,
+    "step N": 0.5,
+    "markdown": 0.4,
+    "edge case": 0.4,
+}
+PASTE_CHAR_STRENGTH = {
+    "no-break space": 0.9,
+    "narrow no-break space": 0.9,
+    "figure space": 0.9,
+    "zero-width space": 0.9,
+    "zero-width non-joiner": 0.9,
+    "zero-width joiner": 0.9,
+    "word joiner": 0.9,
+    "zero-width no-break space": 0.9,
+    "invisible character": 0.7,
+    # Typed by some people too (e.g. Polish quotes in comments).
+    "typographic quote": 0.3,
+    "em dash": 0.4,
+    "en dash": 0.3,
+    "arrow": 0.4,
+    "≤ sign": 0.4,
+    "≥ sign": 0.4,
+}
 
 
 def weights():
@@ -103,6 +142,7 @@ def compute_features(submission, source=None, pasted=None):
     if pasted is None:
         pasted = SubmissionFeatures.objects.filter(submission=submission, pasted=True).exists() or filename.startswith(PASTED_PREFIX)
     analysis = analyze_source(source, filename)
+    habits = extract_habits(source, analysis["language"], pasted=pasted)
     features, _created = SubmissionFeatures.objects.update_or_create(
         submission=submission,
         defaults={
@@ -113,6 +153,7 @@ def compute_features(submission, source=None, pasted=None):
             "fingerprints": analysis["fingerprints"],
             "line_hashes": analysis["line_hashes"],
             "code_lines": analysis["code_lines"],
+            "habits": habits,
             "computed_at": timezone.now(),
         },
     )
@@ -162,6 +203,7 @@ class Item:
     style: float
     style_reasons: list
     fingerprints: set
+    habits: dict
     trusted: bool
     score: float | None
     start: object = None
@@ -237,6 +279,7 @@ class ContestAssessor:
                     style=style,
                     style_reasons=reasons[:3],
                     fingerprints=set(feature.fingerprints),
+                    habits=feature.habits or {},
                     trusted=submission.problem_instance.round_id in trusted_rounds,
                     score=_score_fraction(submission),
                 )
@@ -256,13 +299,17 @@ class ContestAssessor:
         )
         self._set_start_times()
         self._similarity_signals()
+        self._artifact_signals()
         for item in self.items:
             item.signals["llm_style"] = (item.style, {"reasons": [name for name, contribution in item.style_reasons if contribution > 0]})
             reference = item.signals.get("llm_reference", (0.0, {}))[0]
-            item.independent = max(reference, item.style)
+            artifacts = max(item.signals.get(name, (0.0, {}))[0] for name in ("chat_leftovers", "paste_characters"))
+            item.independent = max(reference, item.style, artifacts)
             item.context["trusted"] = item.trusted
             item.context["during_round"] = item.during_round
         self._profile_signals()
+        self._habit_signals()
+        self._vocabulary_signals()
         self._behaviour_signals()
         self._score_signals()
         for item in self.items:
@@ -352,6 +399,137 @@ class ContestAssessor:
                     value,
                     {"similarity": similarity, "baseline": baseline, "reference": reference.id, "model": reference.model_name},
                 )
+
+    # Chat leftovers and characters of a web page: no history needed.
+    def _artifact_signals(self):
+        for item in self.items:
+            chat = item.habits.get("chat", [])
+            if chat:
+                value = 1.0 - math.prod(1.0 - CHAT_STRENGTH.get(name, 0.5) for name in chat)
+                item.signals["chat_leftovers"] = (value, {"found": chat})
+            pasted_chars = item.habits.get("paste_chars", [])
+            if pasted_chars:
+                value = 1.0 - math.prod(1.0 - PASTE_CHAR_STRENGTH.get(name, 0.4) for name in pasted_chars)
+                item.signals["paste_characters"] = (value, {"found": pasted_chars})
+
+    def _history(self, item):
+        """The participant's other submissions with their profile weights."""
+        return [(other, weight) for other in self.by_user[item.user_id] if (weight := self._profile_weight(item, other)) > 0]
+
+    @staticmethod
+    def _usual_lines(history, key, threshold=0.6):
+        """Lines (or names) present in most of the weighted ``history``."""
+        total = sum(weight for _other, weight in history)
+        counts = defaultdict(float)
+        for other, weight in history:
+            for line in set(other.habits.get(key, [])):
+                counts[line] += weight
+        return {line for line, count in counts.items() if count >= threshold * total} if total else set()
+
+    def _habit_signals(self):
+        """Habits a participant keeps (>= HABIT_STABILITY of their other
+        submissions, at least HABIT_MIN_HISTORY of them) and this
+        submission breaks. A break weighs more when participants rarely
+        break that habit, and is ignored when many break it on the same
+        problem (the problem forces it, e.g. a multi-test input).
+        """
+        observations = []  # (item, habit, row)
+        for item in self.items:
+            history = self._history(item)
+            if len(history) < HABIT_MIN_HISTORY:
+                continue
+            total = sum(weight for _other, weight in history)
+            values = item.habits.get("values", {})
+            for habit in CATEGORICAL_HABITS:
+                weights = defaultdict(float)
+                count = 0
+                for other, weight in history:
+                    value = other.habits.get("values", {}).get(habit)
+                    if value is not None:
+                        weights[value] += weight
+                        count += 1
+                if count < HABIT_MIN_HISTORY:
+                    continue
+                usual, usual_weight = max(weights.items(), key=lambda pair: pair[1])
+                share = usual_weight / sum(weights.values())
+                current = values.get(habit)
+                if share < HABIT_STABILITY or current is None or usual == "mixed":
+                    continue
+                row = {"habit": habit, "usual": usual, "share": share, "current": current, "broken": current not in (usual, "mixed")}
+                observations.append((item, habit, row))
+            for habit, key, minimum in (("template", "template", 3), ("macros", "macros", 2)):
+                usual = self._usual_lines(history, key)
+                if len(usual) < minimum or not total:
+                    continue
+                current = set(item.habits.get(key, []))
+                if key == "template" and not current and not item.habits.get("values", {}).get("main"):
+                    continue
+                kept = len(usual & current) / len(usual)
+                row = {"habit": habit, "usual": sorted(usual)[:8], "share": kept, "current": sorted(current - usual)[:8], "broken": kept < 0.5}
+                observations.append((item, habit, row))
+        cases = Counter()
+        breaks = Counter()
+        problem_cases = Counter()
+        problem_breaks = Counter()
+        for item, habit, row in observations:
+            cases[habit] += 1
+            breaks[habit] += row["broken"]
+            problem_cases[habit, item.pi_id] += 1
+            problem_breaks[habit, item.pi_id] += row["broken"]
+        for item, habit, row in observations:
+            item.context.setdefault("habits", []).append(row)
+            if not row["broken"]:
+                continue
+            local_cases = problem_cases[habit, item.pi_id]
+            if local_cases >= 4 and problem_breaks[habit, item.pi_id] / local_cases >= 0.3:
+                row["problem"] = True
+                continue
+            rate = (breaks[habit] + 1) / (cases[habit] + 5)
+            strength = clamp(math.log(1 / rate) / 3)
+            current = row["current"]
+            towards_llm = habit in ("template", "macros") or (isinstance(current, str) and current in LLM_VALUES.get(habit, ()))
+            strength = min(1.0, strength * 1.3) if towards_llm else strength * 0.6
+            row["strength"] = strength
+        for item in self.items:
+            broken = [row for row in item.context.get("habits", []) if row.get("strength")]
+            if broken:
+                value = 1.0 - math.prod(1.0 - 0.8 * row["strength"] for row in broken)
+                detail = [{key: row[key] for key in ("habit", "usual", "current", "share")} for row in sorted(broken, key=lambda r: -r["strength"])]
+                item.signals["habit_break"] = (value, {"broken": detail})
+
+    def _vocabulary_signals(self):
+        """Names never used before by the participant, compared with how
+        many new names others use on the same problem.
+        """
+        overlaps = {}
+        new_names = {}
+        for item in self.items:
+            history = self._history(item)
+            if len(history) < HABIT_MIN_HISTORY:
+                continue
+            known = set()
+            for other, _weight in history:
+                known.update(other.habits.get("identifiers", []))
+            current = {name for name in item.habits.get("identifiers", []) if len(name) >= 2}
+            if len(current) < 4:
+                continue
+            overlaps[item] = len(current & known) / len(current)
+            new_names[item] = sorted(current - known, key=lambda name: (-len(name), name))[:6]
+        for items in self.by_pi.values():
+            group = [item for item in items if item in overlaps]
+            if len(group) < 5:
+                group = list(overlaps)
+            if len(group) < 3:
+                continue
+            scores = dict(zip(group, _robust_scores([overlaps[item] for item in group]), strict=False))
+            median = statistics.median(overlaps[item] for item in group)
+            for item in items:
+                if item not in overlaps:
+                    continue
+                value = clamp((-scores[item] - 1.5) / 2.5)
+                item.context["vocabulary"] = {"overlap": overlaps[item], "median": median}
+                if value > 0:
+                    item.signals["vocabulary"] = (value, {"overlap": overlaps[item], "median": median, "new": new_names[item]})
 
     def _profile_weight(self, item, other):
         """Weight of ``other`` in the style profile used to judge ``item``."""
