@@ -230,6 +230,9 @@ TEMPLATES = [
 
 MIDDLEWARE = (
     'debug_toolbar.middleware.DebugToolbarMiddleware',
+    # Security headers (nosniff, referrer and opener policies, and HTTPS
+    # redirects/HSTS when the SECURE_* settings below are set).
+    'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'oioioi.base.middleware.TimestampingMiddleware',
     'django.middleware.locale.LocaleMiddleware',
@@ -247,10 +250,20 @@ MIDDLEWARE = (
     'oioioi.base.middleware.HttpResponseNotAllowedMiddleware',
     'oioioi.base.middleware.CheckLoginMiddleware',
     'oioioi.base.middleware.UserPreferencesMiddleware',
-    # Uncomment the next line for simple clickjacking protection:
-    # 'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Clickjacking protection: other sites cannot show these pages in a frame.
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'oioioi.maintenancemode.middleware.MaintenanceModeMiddleware',
 )
+
+# No page of this site is shown in a frame, not even by the site itself.
+X_FRAME_OPTIONS = 'DENY'
+# Keeps window.opener for popups opened by the site (e.g. OAuth logins).
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin-allow-popups'
+# Behind an HTTPS reverse proxy, set in settings.py (see DEPLOYMENT_SECURITY.md):
+# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
+# CSRF_TRUSTED_ORIGINS = ['https://<host>']
+# SECURE_HSTS_SECONDS = 31536000
 
 COMMON_MEDIA_PREFIX = 'common/'
 

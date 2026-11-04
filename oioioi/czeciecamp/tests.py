@@ -957,3 +957,41 @@ class TestRejudgeReport(CampTestCase):
         self.assertNotContains(self.client.get(changelist), self.url)
         self._start_rejudge()
         self.assertContains(self.client.get(changelist), self.url)
+
+
+class TestDeploymentChecks(TestCase):
+    def _ids(self, check):
+        return [message.id for message in check(None)]
+
+    def test_sandbox_and_secret_key(self):
+        from django.test import override_settings
+
+        from oioioi.czeciecamp import checks
+
+        with override_settings(USE_UNSAFE_EXEC=True):
+            self.assertEqual(self._ids(checks.check_sandbox), ["czeciecamp.E001"])
+        with override_settings(USE_UNSAFE_EXEC=False):
+            self.assertEqual(self._ids(checks.check_sandbox), [])
+        with override_settings(SECRET_KEY="eca76a75-2b9f-4e09-8f88-86671acbed8b"):
+            self.assertEqual(self._ids(checks.check_secret_key), ["czeciecamp.E002"])
+        with override_settings(SECRET_KEY="a-long-and-random-value-that-is-not-in-the-repository"):
+            self.assertEqual(self._ids(checks.check_secret_key), [])
+
+    def test_makefiles_and_hosts(self):
+        from django.test import override_settings
+
+        from oioioi.czeciecamp import checks
+
+        # The test settings enable oioioi.teachers, which lets teachers upload packages.
+        with override_settings(USE_SINOLPACK_MAKEFILES=True):
+            self.assertEqual(self._ids(checks.check_package_makefiles), ["czeciecamp.W001"])
+        with override_settings(USE_SINOLPACK_MAKEFILES=False):
+            self.assertEqual(self._ids(checks.check_package_makefiles), [])
+        with override_settings(ALLOWED_HOSTS=["*"]):
+            self.assertEqual(self._ids(checks.check_allowed_hosts), ["czeciecamp.W002"])
+
+    def test_security_headers(self):
+        response = self.client.get("/")
+        self.assertEqual(response["X-Frame-Options"], "DENY")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(response["Cross-Origin-Opener-Policy"], "same-origin-allow-popups")

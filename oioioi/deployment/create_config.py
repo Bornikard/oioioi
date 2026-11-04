@@ -1,9 +1,9 @@
 import os
 import os.path
 import pwd
+import secrets
 import shutil
 import sys
-import uuid
 from argparse import ArgumentParser
 
 from oioioi.base.utils.execute import execute
@@ -34,7 +34,8 @@ def generate_all(dir, verbose: bool, use_system_compilers: bool):
         {
             "__CONFIG_VERSION__": str(INSTALLATION_CONFIG_VERSION),
             "__DIR__": dir,
-            "__SECRET__": str(uuid.uuid4()),
+            # Long enough for Django's check --deploy (50+ characters).
+            "__SECRET__": secrets.token_urlsafe(50),
             "__USE_SYSTEM_COMPILERS__": use_system_compilers,
         },
     )
