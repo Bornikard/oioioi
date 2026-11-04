@@ -3,9 +3,10 @@ from datetime import UTC, datetime  # pylint: disable=E0611
 from django.contrib.auth.models import User
 from django.test import RequestFactory
 from django.urls import reverse
+from humanize import naturaldelta
 
 from oioioi.base.tests import TestCase, fake_time
-from oioioi.contests.models import Contest, ProblemInstance
+from oioioi.contests.models import Contest, ProblemInstance, Round
 from oioioi.statistics.controllers import statistics_categories, statistics_plot_kinds
 from oioioi.statistics.models import StatisticsConfig
 from oioioi.statistics.plotfunctions import (
@@ -247,7 +248,10 @@ class TestContestMonitoringViews(TestCase):
                     self.assertTrue(ri["start_relative"] == "Started")
                     self.assertTrue(ri["end_relative"] == "Finished")
                 if ri["name"] == "Future round":
-                    self.assertTrue(ri["start_relative"] == "11 months")
+                    # The wording of the delta is humanize's ("11 months" or
+                    # "a year", depending on its version).
+                    start = Round.objects.get(name="Future round").start_date
+                    self.assertEqual(ri["start_relative"], naturaldelta(start - self.request.timestamp))
 
     def test_questions_info(self):
         contest = Contest.objects.get()

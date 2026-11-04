@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -9,6 +9,8 @@ resolution-markers = [
 [options]
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
+
+[manifest]
 
 [[manifest.dependency-metadata]]
 name = "bsddb3"
@@ -950,15 +952,15 @@ wheels = [
 
 [[package]]
 name = "django-debug-toolbar"
-version = "5.2.0"
+version = "8.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
     { name = "sqlparse" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/9f/97ba2648f66fa208fc7f19d6895586d08bc5f0ab930a1f41032e60f31a41/django_debug_toolbar-5.2.0.tar.gz", hash = "sha256:9e7f0145e1a1b7d78fcc3b53798686170a5b472d9cf085d88121ff823e900821", size = 297901, upload-time = "2025-04-29T05:23:57.533Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/3d/aa093a841f32837311538e7952f5548b1a9c605a5aba5395163fbc54ac59/django_debug_toolbar-8.0.0.tar.gz", hash = "sha256:cae32d3e441e608f39f3f1ca6b3f028c38d5d04d74c98d8ab96d46022dee3163", size = 1239141, upload-time = "2026-09-01T18:27:56.934Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/c2/ed3cb815002664349e9e50799b8c00ef15941f4cad797247cadbdeebab02/django_debug_toolbar-5.2.0-py3-none-any.whl", hash = "sha256:15627f4c2836a9099d795e271e38e8cf5204ccd79d5dbcd748f8a6c284dcd195", size = 262834, upload-time = "2025-04-29T05:23:55.472Z" },
+    { url = "https://files.pythonhosted.org/packages/22/bd/ffd3f171940c58cca7971d1e5b81d6ab67b85a9569fe9d9fe13f7fbd1c99/django_debug_toolbar-8.0.0-py3-none-any.whl", hash = "sha256:329dfd6e1c26d9b4501a5cc69294c8bb734206ccb1bd36e96afc4d14128b630a", size = 437877, upload-time = "2026-09-01T18:27:55.018Z" },
 ]
 
 [[package]]
@@ -1526,11 +1528,11 @@ wheels = [
 
 [[package]]
 name = "humanize"
-version = "4.9.0"
+version = "4.16.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/76/21/7a0b24fae849562397efd79da58e62437243ae0fd0f6c09c6bc26225b75c/humanize-4.9.0.tar.gz", hash = "sha256:582a265c931c683a7e9b8ed9559089dea7edcf6cc95be39a3cbc2c5d5ac2bcfa", size = 78465, upload-time = "2023-11-21T19:53:28.774Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/ea/13a1ef3c12d12662905801495283530251918b70d62d368f1d2e0272c70d/humanize-4.16.0.tar.gz", hash = "sha256:7dc2244a2f84a4bfb1d36c37bac80cd78e35cdc5c119206d87b018e1445f3a3f", size = 89515, upload-time = "2026-06-30T16:17:29.859Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/aa/2b/2ae0c789fd08d5b44e745726d08a17e6d3d7d09071d05473105edc7615f2/humanize-4.9.0-py3-none-any.whl", hash = "sha256:ce284a76d5b1377fd8836733b983bfb0b76f1aa1c090de2566fcf008d7f6ab16", size = 126820, upload-time = "2023-11-21T19:53:26.406Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/aa/0b7365d30fed43e7a3449aba1fe20a0a7174d9cf13e282af4e69ac825441/humanize-4.16.0-py3-none-any.whl", hash = "sha256:353eb2f34c09d098b2880eee8bef21832eae6d174f48c5762fff7e5fcb74d01d", size = 137209, upload-time = "2026-06-30T16:17:28.36Z" },
 ]
 
 [[package]]
@@ -1570,18 +1572,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6c/e6/7bf14eeb8f8b7251141944835abd42eb20a658d89084b7e1f3e5fe394090/imagesize-2.0.0.tar.gz", hash = "sha256:8e8358c4a05c304f1fccf7ff96f036e7243a189e9e42e90851993c558cfe9ee3", size = 1773045, upload-time = "2026-03-03T14:18:29.941Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5f/53/fb7122b71361a0d121b669dcf3d31244ef75badbbb724af388948de543e2/imagesize-2.0.0-py2.py3-none-any.whl", hash = "sha256:5667c5bbb57ab3f1fa4bc366f4fbc971db3d5ed011fd2715fd8001f782718d96", size = 9441, upload-time = "2026-03-03T14:18:27.892Z" },
-]
-
-[[package]]
-name = "importlib-metadata"
-version = "4.13.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "zipp" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/55/12/ab288357b884ebc807e3f4eff63ce5ba6b941ba61499071bf19f1bbc7f7f/importlib_metadata-4.13.0.tar.gz", hash = "sha256:dd0173e8f150d6815e098fd354f6414b0f079af4644ddfe90c71e2fc6174346d", size = 50445, upload-time = "2022-10-01T17:09:15.698Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/98/c277899f5aa21f6e6946e1c83f2af650cbfee982763ffb91db07ff7d3a13/importlib_metadata-4.13.0-py3-none-any.whl", hash = "sha256:8a8a81bcf996e74fee46f0d16bd3eaa382a7eb20fd82445c3ad11f4090334116", size = 23010, upload-time = "2022-10-01T17:09:13.903Z" },
 ]
 
 [[package]]
@@ -2027,7 +2017,6 @@ dependencies = [
     { name = "fontawesomefree" },
     { name = "fpdf" },
     { name = "humanize" },
-    { name = "importlib-metadata" },
     { name = "legacy-cgi" },
     { name = "mistune" },
     { name = "pdfminer-six" },
@@ -2097,7 +2086,7 @@ requires-dist = [
     { name = "django", specifier = ">=5.2,<5.3" },
     { name = "django-appconf", specifier = ">=1.2,<1.3" },
     { name = "django-compressor", specifier = ">=4.6,<4.7" },
-    { name = "django-debug-toolbar", specifier = "<6.0.0" },
+    { name = "django-debug-toolbar", specifier = ">=8.0,<9" },
     { name = "django-extensions", specifier = ">=4.1,<4.2" },
     { name = "django-gravatar2", specifier = ">=1.4,<1.5" },
     { name = "django-libsass", specifier = ">=0.9,<0.10" },
@@ -2117,8 +2106,7 @@ requires-dist = [
     { name = "filetracker", specifier = ">=2.3.1,<3.0" },
     { name = "fontawesomefree", specifier = ">=6.4,<6.5" },
     { name = "fpdf", specifier = ">=1.7,<1.8" },
-    { name = "humanize", specifier = "<=4.9.0" },
-    { name = "importlib-metadata", specifier = "==4.13.0" },
+    { name = "humanize", specifier = ">=4.16,<5" },
     { name = "legacy-cgi" },
     { name = "mistune", specifier = ">=3.3.4,<4" },
     { name = "pdfminer-six", specifier = "==20260107" },
@@ -2128,10 +2116,10 @@ requires-dist = [
     { name = "pygments", specifier = ">=2.20,<2.22" },
     { name = "pylibmc" },
     { name = "python-dateutil", specifier = ">=2.8,<2.9" },
-    { name = "pytz", specifier = ">=2023.3,<2023.4" },
+    { name = "pytz", specifier = ">=2026.5" },
     { name = "pyyaml", specifier = ">=6.0.3,<6.1" },
     { name = "requests", specifier = ">=2.33,<2.35" },
-    { name = "sentry-sdk", specifier = ">=2.16.0,<2.17.0" },
+    { name = "sentry-sdk", specifier = ">=2.73,<3" },
     { name = "setuptools", specifier = ">=61.0" },
     { name = "sioworkers", url = "https://github.com/sio2project/sioworkers/archive/refs/tags/v1.5.11.tar.gz" },
     { name = "sqlalchemy", specifier = ">=2.0,<2.1.0" },
@@ -2924,11 +2912,11 @@ wheels = [
 
 [[package]]
 name = "pytz"
-version = "2023.3.post1"
+version = "2026.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/69/4f/7bf883f12ad496ecc9514cd9e267b29a68b3e9629661a2bbc24f80eff168/pytz-2023.3.post1.tar.gz", hash = "sha256:7b4fddbeb94a1eba4b557da24f19fdf9db575192544270a9101d8509f9f43d7b", size = 316899, upload-time = "2023-09-05T01:56:58.535Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/14/21/d83d6ef28c4c912c4bb4d1dcf591f7b8c6bde87b9c66f9f454677314e16d/pytz-2026.5.tar.gz", hash = "sha256:fa23724b9c486543b9ff54a327ee7569ac83ade54bb9afd0fc18676620401c86", size = 318572, upload-time = "2026-10-04T02:37:58.719Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/32/4d/aaf7eff5deb402fd9a24a1449a8119f00d74ae9c2efa79f8ef9994261fc2/pytz-2023.3.post1-py2.py3-none-any.whl", hash = "sha256:ce42d816b81b68506614c11e8937d3aa9e41007ceb50bfdcb0749b921bf646c7", size = 502454, upload-time = "2023-09-05T01:56:55.916Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/ef/c66110d46fb800dda0bf33164182dfadabe26a90e4476844d502a23dca8e/pytz-2026.5-py2.py3-none-any.whl", hash = "sha256:e658af3757f9e26a9d25dd2aff38335acd92bc9104f890a894b2c1ba28311b03", size = 506342, upload-time = "2026-10-04T02:37:56.814Z" },
 ]
 
 [[package]]
@@ -3281,15 +3269,15 @@ wheels = [
 
 [[package]]
 name = "sentry-sdk"
-version = "2.16.0"
+version = "2.73.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/80/63/59640a54963747d2c4b2d149412b2024abed13bacd4e8d16ae5babb97da0/sentry_sdk-2.16.0.tar.gz", hash = "sha256:90f733b32e15dfc1999e6b7aca67a38688a567329de4d6e184154a73f96c6892", size = 290180, upload-time = "2024-10-08T12:39:14.632Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c5/3b/1e47acf2456781c26e12007379ecc154bf310b8f64d40390d78b791d55c3/sentry_sdk-2.73.0.tar.gz", hash = "sha256:4a2ab97b16e4693c325ab361c7bbbb346dbc7d0bc0150922d795a25bac8d5280", size = 1079078, upload-time = "2026-10-22T09:08:49.63Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/aa/9f8dce2aec2e95d48c057ff3bcac48958cd15f67d4e9e80e74b46c324abf/sentry_sdk-2.16.0-py2.py3-none-any.whl", hash = "sha256:49139c31ebcd398f4f6396b18910610a0c1602f6e67083240c33019d1f6aa30c", size = 313785, upload-time = "2024-10-08T12:39:12.27Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/88/cabf98d017d7b940720e514e5f8ee02e3e6f7495caf93c30735a38387ec4/sentry_sdk-2.73.0-py3-none-any.whl", hash = "sha256:0bcfa6928ea5adbb89591858b514d27adac27c7a3cccc31b20ed10e0b09eda9e", size = 549011, upload-time = "2026-10-22T09:08:47.88Z" },
 ]
 
 [[package]]
@@ -4171,15 +4159,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/38/02/eef443559563ef8f2e10469387b8b1e97cb5efee95b288a56da60801f7ee/yarl-1.25.1-cp315-cp315t-win_amd64.whl", hash = "sha256:b13b88747769537f3d32e89e3a735da10c0a9e35d7322928c701b5f93d3afffd", size = 106811, upload-time = "2026-09-15T19:34:54.935Z" },
     { url = "https://files.pythonhosted.org/packages/88/91/41e284ca2cf5211e05dae031d126a3668aea88fa759df56e7e35c6ad25ba/yarl-1.25.1-cp315-cp315t-win_arm64.whl", hash = "sha256:783dd1467083f4d3f7722ad6a313f24c173e7571372738fcb7a6e6d1ba48df25", size = 101804, upload-time = "2026-09-15T19:34:57.231Z" },
     { url = "https://files.pythonhosted.org/packages/54/22/318c7980066769c6bcd9221ed2248294f5698811da099013098c670565ed/yarl-1.25.1-py3-none-any.whl", hash = "sha256:681c758b0490f9e96b78e5fa8e8dc6e648e9185bb6eaebe73183c33ea0c445f3", size = 63617, upload-time = "2026-09-15T19:34:59.616Z" },
-]
-
-[[package]]
-name = "zipp"
-version = "3.23.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/30/21/093488dfc7cc8964ded15ab726fad40f25fd3d788fd741cc1c5a17d78ee8/zipp-3.23.1.tar.gz", hash = "sha256:32120e378d32cd9714ad503c1d024619063ec28aad2248dc6672ad13edfa5110", size = 25965, upload-time = "2026-04-13T23:21:46.6Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/8a/0861bec20485572fbddf3dfba2910e38fe249796cb73ecdeb74e07eeb8d3/zipp-3.23.1-py3-none-any.whl", hash = "sha256:0b3596c50a5c700c9cb40ba8d86d9f2cc4807e9bedb06bcdf7fac85633e444dc", size = 10378, upload-time = "2026-04-13T23:21:45.386Z" },
 ]
 
 [[package]]

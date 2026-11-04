@@ -82,6 +82,12 @@ AUTHENTICATION_BACKENDS += (
 
 MIDDLEWARE += ('oioioi.base.tests.FakeTimeMiddleware',)
 
+# The toolbar only works with DEBUG, which tests never use, and since
+# version 6 it edits MIGRATION_MODULES when apps are reloaded (tests with
+# modify_settings(INSTALLED_APPS=...)), which breaks pytest --nomigrations.
+INSTALLED_APPS = tuple(app for app in INSTALLED_APPS if app != 'debug_toolbar')
+MIDDLEWARE = tuple(m for m in MIDDLEWARE if m != 'debug_toolbar.middleware.DebugToolbarMiddleware')
+
 TESTS = True
 MOCK_RANKINGSD = True
 
