@@ -1,5 +1,6 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
 
 from oioioi.contests.models import ProblemInstance
 from oioioi.llmdetect.models import LLMDetectConfig, ReviewDecision
@@ -73,3 +74,26 @@ class DecisionForm(forms.ModelForm):
         self.fields["submission"].required = False
         self.fields["submission"].label_from_instance = lambda s: f"#{s.id} {s.problem_instance.short_name} {s.date:%d.%m %H:%M}"
         self.fields["submission"].help_text = _("A confirmed submission becomes an LLM reference of its problem.")
+
+
+class GenerateForm(forms.Form):
+    problem_instance = forms.ModelChoiceField(queryset=ProblemInstance.objects.none(), label=_("Problem"))
+    statement = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 12, "class": "font-monospace small"}),
+        label=_("Statement sent to the models"),
+        help_text=_("Exactly this text is sent, with a short instruction. Check it, and remove anything that must not leave the server."),
+        max_length=60000,
+    )
+    models = forms.MultipleChoiceField(widget=forms.CheckboxSelectMultiple, label=pgettext_lazy("llmdetect", "Models"))
+    prompts = forms.MultipleChoiceField(widget=forms.CheckboxSelectMultiple, label=_("Prompts"))
+    count = forms.IntegerField(min_value=1, max_value=20, initial=2, label=_("Solutions per model and prompt"))
+
+    def __init__(self, *args, contest, **kwargs):
+        from oioioi.llmdetect.generation import PROMPTS, model_choices
+
+        super().__init__(*args, **kwargs)
+        problems = ProblemInstance.objects.filter(contest=contest).select_related("round")
+        self.fields["problem_instance"].queryset = problems.order_by("round__start_date", "short_name")
+        self.fields["models"].choices = model_choices()
+        self.fields["prompts"].choices = [(key, label) for key, (label, _instruction) in PROMPTS.items()]
+        self.fields["prompts"].initial = list(PROMPTS)

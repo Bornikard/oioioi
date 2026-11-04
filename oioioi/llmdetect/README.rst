@@ -33,6 +33,38 @@ The panel is for contest admins only (not basic admins). After the camp,
 ``manage.py llmdetect_purge CONTEST`` deletes the data, keeping anonymized
 decisions for calibration.
 
+Generating references
+---------------------
+
+The *LLM references* page can ask LLMs for solutions: pick a problem,
+*Load statement* (text extracted from its PDF/HTML/zip statement), check
+and edit the text, choose models, prompt styles (plain, in Polish, like a
+high-school student, like an olympiad competitor, disguised) and how many
+solutions each. Exactly the text in the box, with a one-line instruction,
+is sent; participants' code never is. Jobs run in the background, in the
+``llmdetect-generator`` supervisor program (``manage.py
+llmdetect_generator``; ``--once`` processes the queue and exits). Each
+answer's longest code block becomes a reference.
+
+Models are configured in ``LLMDETECT_PROVIDERS`` (an example is in the
+settings template). Two kinds of providers:
+
+* ``"type": "openai"``: any OpenAI-compatible chat completions API, given
+  ``base_url``, ``api_key`` and ``models``. That covers free tiers
+  (OpenRouter's ``:free`` models, Google Gemini, Groq, Mistral), paid APIs
+  (OpenAI, DeepSeek, paid tiers of the same) and a model on your own
+  machine (Ollama, vLLM, llama.cpp server). ``min_interval`` spaces the
+  requests to stay within free-tier limits; 429 answers are retried.
+* ``"type": "anthropic"``: Claude through the official ``anthropic`` SDK;
+  declined requests fall back server-side to another Claude model.
+
+Free tiers have low daily limits and may use what is sent to train models
+(Google states this for the free Gemini API tier). Statements of a camp
+are secret until it starts, so for unpublished problems use paid tiers
+that do not train on your data, or a local model. Consumer chat apps
+(the free ChatGPT, Claude or Gemini websites) have no API and cannot be
+used; their answers can still be pasted on the page by hand.
+
 How it works
 ------------
 

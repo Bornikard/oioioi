@@ -456,12 +456,44 @@ msgstr "Pliki"
 msgid "Or paste code"
 msgstr "Albo wklej kod"
 
+msgid "Statement sent to the models"
+msgstr "Treść wysyłana do modeli"
+
+msgid "Exactly this text is sent, with a short instruction. Check it, and remove anything that must not leave the server."
+msgstr "Wysyłany jest dokładnie ten tekst, z krótkim poleceniem. Sprawdź go i usuń wszystko, co nie może opuścić serwera."
+
+msgctxt "llmdetect"
+msgid "Models"
+msgstr "Modele"
+
+msgid "Prompts"
+msgstr "Prompty"
+
+msgid "Solutions per model and prompt"
+msgstr "Rozwiązań na model i prompt"
+
 msgid "Choose files or paste code."
 msgstr "Wybierz pliki albo wklej kod."
 
 #, python-format
 msgid "%(name)s is too large."
 msgstr "%(name)s jest za duży."
+
+msgctxt "llmdetect"
+msgid "Plain"
+msgstr "Zwykły"
+
+msgid "In Polish"
+msgstr "Po polsku"
+
+msgid "Like a high-school student"
+msgstr "Jak licealista"
+
+msgid "Like an olympiad competitor"
+msgstr "Jak olimpijczyk"
+
+msgid "Disguised"
+msgstr "Zamaskowane"
 
 msgid "LLM detection settings"
 msgstr "Ustawienia wykrywania LLM"
@@ -517,6 +549,22 @@ msgstr "werdykt"
 msgid "note"
 msgstr "notatka"
 
+msgctxt "llmdetect"
+msgid "queued"
+msgstr "w kolejce"
+
+msgctxt "llmdetect"
+msgid "running"
+msgstr "w toku"
+
+msgctxt "llmdetect"
+msgid "done"
+msgstr "gotowe"
+
+msgctxt "llmdetect"
+msgid "failed"
+msgstr "błąd"
+
 msgid "LLM detection"
 msgstr "Wykrywanie LLM"
 
@@ -544,6 +592,13 @@ msgstr "Otwarcie treści"
 #, python-format
 msgid "Added %(count)d references."
 msgstr "Dodano referencje: %(count)d."
+
+#, python-format
+msgid "Queued %(count)d generation jobs."
+msgstr "Dodano zadania generowania: %(count)d."
+
+msgid "Could not read the statement of this problem; paste its text."
+msgstr "Nie udało się odczytać treści zadania; wklej jej tekst."
 
 msgid "Recompute"
 msgstr "Przelicz"
@@ -605,6 +660,21 @@ msgstr[0] "%(counter)s referencja"
 msgstr[1] "%(counter)s referencje"
 msgstr[2] "%(counter)s referencji"
 
+msgid "Generate with LLMs"
+msgstr "Generowanie przez LLM"
+
+msgid "Load statement"
+msgstr "Wczytaj treść"
+
+msgid "What the prompts say"
+msgstr "Co mówią prompty"
+
+msgid "Generation runs in the background; refresh this page to see the progress."
+msgstr "Generowanie działa w tle; odśwież stronę, żeby zobaczyć postęp."
+
+msgid "Add by hand"
+msgstr "Dodaj ręcznie"
+
 msgid "Add"
 msgstr "Dodaj"
 
@@ -617,8 +687,26 @@ msgstr "usuń"
 msgid "No references yet."
 msgstr "Nie ma jeszcze referencji."
 
-msgid "Before the round, generate tens of solutions per problem with the models participants use and with prompts that imitate them (\"write like a high-school student, short, no comments\", a sample of the participant's code as a style to copy, fixing a wrong solution). Keep wrong solutions too: their mistakes are a strong fingerprint. Only problem statements go to external models, never participants' code."
-msgstr "Przed turą wygeneruj kilkadziesiąt rozwiązań każdego zadania modelami, których używają uczestnicy, i promptami, które ich udają („pisz jak licealista, krótko, bez komentarzy”, przykładowy kod uczestnika jako wzorzec stylu, poprawa błędnego rozwiązania). Zachowuj też błędne rozwiązania: ich pomyłki to wyraźny odcisk palca. Do zewnętrznych modeli trafiają tylko treści zadań, nigdy kod uczestników."
+msgctxt "llmdetect"
+msgid "Generate"
+msgstr "Generuj"
+
+msgctxt "llmdetect"
+msgid "Done"
+msgstr "Gotowe"
+
+msgctxt "llmdetect"
+msgid "Status"
+msgstr "Stan"
+
+msgid "Before the round, get tens of solutions per problem from the models participants use and with prompts that imitate them. Keep wrong solutions too: their mistakes are a strong fingerprint. Only problem statements go to external models, never participants' code."
+msgstr "Przed turą zbierz kilkadziesiąt rozwiązań każdego zadania z modeli, których używają uczestnicy, i z promptów, które ich udają. Zachowuj też błędne rozwiązania: ich pomyłki to wyraźny odcisk palca. Do zewnętrznych modeli trafiają tylko treści zadań, nigdy kod uczestników."
+
+msgid "No models are configured. Add <code>LLMDETECT_PROVIDERS</code> to the settings (see the module's README): any OpenAI-compatible API (OpenRouter, Google Gemini, Groq, Mistral, a local Ollama, OpenAI...) or Anthropic."
+msgstr "Nie skonfigurowano modeli. Dodaj <code>LLMDETECT_PROVIDERS</code> do ustawień (zobacz README modułu): dowolne API zgodne z OpenAI (OpenRouter, Google Gemini, Groq, Mistral, lokalna Ollama, OpenAI...) albo Anthropic."
+
+msgid "Free tiers of some providers may use what you send to train their models. Before the camp the statements are secret: prefer paid tiers that do not train on your data, or a model running on your own server, for unpublished problems."
+msgstr "Darmowe plany niektórych dostawców mogą używać wysłanych danych do trenowania modeli. Przed obozem treści zadań są tajne: dla nieopublikowanych zadań wybieraj płatne plany, które nie trenują na twoich danych, albo model działający na własnym serwerze."
 
 msgid "Submissions"
 msgstr "Zgłoszenia"

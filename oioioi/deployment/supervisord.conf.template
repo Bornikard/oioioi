@@ -38,6 +38,15 @@ redirect_stderr=false
 stdout_logfile={{ PROJECT_DIR }}/logs/mailnotifyd.log
 stderr_logfile={{ PROJECT_DIR }}/logs/mailnotifyd-err.log
 
+[program:llmdetect-generator]
+command={{ PYTHON }} {{ PROJECT_DIR }}/manage.py llmdetect_generator
+startretries=0
+stopwaitsecs=15
+redirect_stderr=false
+stdout_logfile={{ PROJECT_DIR }}/logs/llmdetect-generator.log
+stderr_logfile={{ PROJECT_DIR }}/logs/llmdetect-generator-err.log
+{% if 'oioioi.llmdetect' not in settings.INSTALLED_APPS %}exclude=true{% endif %}
+
 [program:unpackmgr]
 command=celery -A oioioi.celery worker -n %%h-unpackmgr -E -Q unpackmgr -c {{ settings.UNPACKMGR_CONCURRENCY }}
 startretries=0

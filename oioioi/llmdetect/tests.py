@@ -5,12 +5,13 @@ from datetime import UTC, datetime, timedelta
 from io import StringIO
 from types import SimpleNamespace
 from unittest import TestCase as SimpleTestCase
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.http import HttpResponse
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 from django.urls import reverse
 from django.utils import translation
 
@@ -20,9 +21,10 @@ from oioioi.contests.scores import IntegerScore
 from oioioi.llmdetect import features as F
 from oioioi.llmdetect.controllers import LLMDetectContestControllerMixin
 from oioioi.llmdetect.explain import HABIT_LABELS, SIGNAL_LABELS, describe, habit_value
+from oioioi.llmdetect.generation import PROMPTS, build_prompt, extract_code
 from oioioi.llmdetect.habits import extract_habits
 from oioioi.llmdetect.middleware import ProblemViewMiddleware
-from oioioi.llmdetect.models import LLMDetectConfig, LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, SubmissionFeatures
+from oioioi.llmdetect.models import GenerationJob, LLMDetectConfig, LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, SubmissionFeatures
 from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, compute_features, needs_update, user_rankings
 from oioioi.problems.models import Problem
 from oioioi.programs.models import ProgramSubmission
@@ -492,3 +494,150 @@ class TestCommands(LLMDetectTestCase):
         decision = ReviewDecision.objects.get()
         self.assertIsNone(decision.user)
         self.assertEqual(decision.note, "")
+
+
+PROVIDERS = {
+    "free": {"type": "openai", "base_url": "https://example.com/v1/", "api_key": "k", "models": ["small:free", "big:free"]},
+    "claude": {"type": "anthropic", "api_key": "k", "models": ["claude-opus-5-5"]},
+}
+
+
+def _chat_response(text, status=200):
+    response = MagicMock(status_code=status, text=text, headers={})
+    response.json.return_value = {"choices": [{"message": {"content": text}}]}
+    return response
+
+
+class TestGenerationHelpers(SimpleTestCase):
+    def test_extract_code(self):
+        answer = "Here is the solution:\n```cpp\nint main() {}\n```\nAnd a test:\n```\n1 2\n```"
+        self.assertEqual(extract_code(answer), "int main() {}\n")
+        self.assertEqual(extract_code("int main() {}"), "int main() {}\n")
+
+    def test_prompts_contain_the_statement(self):
+        for variant in PROMPTS:
+            prompt = build_prompt(variant, "Given n, print n+1.")
+            self.assertTrue(prompt.endswith("Given n, print n+1."))
+            self.assertIn("C++", prompt)
+
+
+@override_settings(LLMDETECT_PROVIDERS=PROVIDERS)
+class TestGeneration(LLMDetectTestCase):
+    def _job(self, **kwargs):
+        defaults = {
+            "problem_instance": self.pis[0],
+            "provider": "free",
+            "model": "small:free",
+            "prompt_variant": "plain",
+            "count": 2,
+            "statement": "Add two numbers.",
+        }
+        return GenerationJob.objects.create(**{**defaults, **kwargs})
+
+    def _url(self, **params):
+        url = reverse("llmdetect_references", kwargs={"contest_id": self.contest.id})
+        return url + ("?" + "&".join(f"{k}={v}" for k, v in params.items()) if params else "")
+
+    def test_generate_form_queues_jobs_with_the_edited_statement(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        response = self.client.post(
+            self._url(),
+            {
+                "action": "generate",
+                "problem_instance": self.pis[0].id,
+                "statement": "Edited statement.",
+                "models": ["free:small:free", "claude:claude-opus-5-5"],
+                "prompts": ["plain", "student"],
+                "count": 3,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        jobs = GenerationJob.objects.all()
+        self.assertEqual(jobs.count(), 4)
+        self.assertEqual({(j.provider, j.model) for j in jobs}, {("free", "small:free"), ("claude", "claude-opus-5-5")})
+        self.assertTrue(all(j.statement == "Edited statement." and j.count == 3 and j.status == GenerationJob.QUEUED for j in jobs))
+        page = self.client.get(self._url(problem=self.pis[0].id))
+        self.assertContains(page, "small:free")
+
+    def test_load_statement(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        with patch("oioioi.llmdetect.views.statement_text", return_value="Dane jest n."):
+            response = self.client.get(self._url(problem=self.pis[0].id, statement=1))
+        self.assertEqual(response.context["generate_form"].initial["statement"], "Dane jest n.")
+        with patch("oioioi.llmdetect.views.statement_text", return_value=""):
+            response = self.client.get(self._url(problem=self.pis[0].id, statement=1))
+        self.assertContains(response, "Could not read the statement")
+
+    def test_statement_text_formats(self):
+        from oioioi.llmdetect.generation import _text_of
+
+        self.assertEqual(_text_of(b"<html><body><h1>Zadanie</h1><p>Dane jest n.</p></body></html>", ".html"), "Zadanie\nDane jest n.")
+        self.assertEqual(_text_of(b"Dane\r\n\r\n\r\n\r\njest n.", ".txt"), "Dane\n\njest n.")
+        self.assertEqual(_text_of(b"\x00", ".ps"), "")
+
+    def test_openai_compatible_job_creates_references(self):
+        job = self._job()
+        with patch("oioioi.llmdetect.generation.requests.post", return_value=_chat_response("```cpp\n" + LLM_BFS + "```")) as post:
+            call_command("llmdetect_generator", "--once", stdout=StringIO())
+        job.refresh_from_db()
+        self.assertEqual((job.status, job.produced), (GenerationJob.DONE, 2))
+        (url,) = post.call_args.args
+        self.assertEqual(url, "https://example.com/v1/chat/completions")
+        body = post.call_args.kwargs["json"]
+        self.assertEqual(body["model"], "small:free")
+        # Only the instruction and the statement are sent.
+        self.assertEqual(body["messages"], [{"role": "user", "content": build_prompt("plain", "Add two numbers.")}])
+        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer k")
+        references = LLMReferenceSolution.objects.filter(problem_instance=self.pis[0])
+        self.assertEqual(references.count(), 2)
+        self.assertEqual(references.first().source, LLM_BFS)
+        self.assertEqual(references.first().model_name, "small:free")
+        self.assertTrue(references.first().fingerprints)
+        self.assertTrue(LLMDetectConfig.objects.get(contest=self.contest).dirty)
+
+    def test_rate_limit_is_retried_and_errors_fail_the_job(self):
+        job = self._job(count=1)
+        limited = MagicMock(status_code=429, text="slow down", headers={"retry-after": "0"})
+        with patch("oioioi.llmdetect.generation.requests.post", side_effect=[limited, _chat_response("int main(){}")]):
+            call_command("llmdetect_generator", "--once", stdout=StringIO())
+        job.refresh_from_db()
+        self.assertEqual(job.status, GenerationJob.DONE)
+        failing = self._job(count=1)
+        with patch("oioioi.llmdetect.generation.requests.post", return_value=MagicMock(status_code=401, text="bad key", headers={})):
+            call_command("llmdetect_generator", "--once", stdout=StringIO())
+        failing.refresh_from_db()
+        self.assertEqual(failing.status, GenerationJob.FAILED)
+        self.assertIn("HTTP 401", failing.error)
+
+    def test_claude_job_uses_the_sdk_with_fallback(self):
+        job = self._job(provider="claude", model="claude-opus-5-5", count=1)
+        message = MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="```cpp\nint main(){}\n```")])
+        with patch("anthropic.Anthropic") as client_class:
+            client_class.return_value.beta.messages.create.return_value = message
+            call_command("llmdetect_generator", "--once", stdout=StringIO())
+        job.refresh_from_db()
+        self.assertEqual(job.status, GenerationJob.DONE, job.error)
+        kwargs = client_class.return_value.beta.messages.create.call_args.kwargs
+        self.assertEqual((kwargs["model"], kwargs["fallbacks"], kwargs["betas"]), ("claude-opus-5-5", "default", ["server-side-fallback-2026-07-01"]))
+        self.assertEqual(LLMReferenceSolution.objects.get().source, "int main(){}\n")
+
+    def test_claude_refusal_fails_the_job(self):
+        job = self._job(provider="claude", model="claude-opus-5-5", count=1)
+        with patch("anthropic.Anthropic") as client_class:
+            client_class.return_value.beta.messages.create.return_value = MagicMock(stop_reason="refusal", content=[])
+            call_command("llmdetect_generator", "--once", stdout=StringIO())
+        job.refresh_from_db()
+        self.assertEqual(job.status, GenerationJob.FAILED)
+        self.assertIn("declined", job.error)
+
+    def test_jobs_left_running_are_resumed(self):
+        job = self._job(count=2, status=GenerationJob.RUNNING, produced=1)
+        with patch("oioioi.llmdetect.generation.requests.post", return_value=_chat_response("int main(){}")) as post:
+            call_command("llmdetect_generator", "--once", stdout=StringIO())
+        job.refresh_from_db()
+        self.assertEqual((job.status, job.produced, post.call_count), (GenerationJob.DONE, 2, 1))
+
+    @override_settings(LLMDETECT_PROVIDERS={})
+    def test_no_providers(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.assertContains(self.client.get(self._url()), "No models are configured")

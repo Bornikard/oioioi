@@ -16,8 +16,9 @@ from oioioi.contests.menu import contest_admin_menu_registry
 from oioioi.contests.models import ProblemInstance
 from oioioi.contests.utils import contest_exists, is_contest_admin
 from oioioi.llmdetect.explain import SIGNAL_LABELS, habit_rows, profile_features, signal_rows
-from oioioi.llmdetect.forms import DecisionForm, ReferenceForm, SettingsForm
-from oioioi.llmdetect.models import LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, get_config, mark_dirty
+from oioioi.llmdetect.forms import DecisionForm, GenerateForm, ReferenceForm, SettingsForm
+from oioioi.llmdetect.generation import PROMPTS, providers, statement_text
+from oioioi.llmdetect.models import GenerationJob, LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, get_config, mark_dirty
 from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, read_source, update_if_needed, user_rankings
 from oioioi.programs.models import ProgramSubmission
 
@@ -105,11 +106,20 @@ def settings_view(request):
     return redirect(_panel_url(request.contest))
 
 
+def _references_url(contest, problem_id=None):
+    url = reverse("llmdetect_references", kwargs={"contest_id": contest.id})
+    return f"{url}?problem={problem_id}" if problem_id else url
+
+
 @enforce_condition(contest_exists & is_contest_admin)
 def references_view(request):
     contest = request.contest
-    form = ReferenceForm(request.POST or None, request.FILES or None, contest=contest, initial={"problem_instance": request.GET.get("problem")})
-    if request.method == "POST":
+    problem = request.GET.get("problem")
+    action = request.POST.get("action", "upload")
+    form = ReferenceForm(contest=contest, initial={"problem_instance": problem})
+    generate_form = GenerateForm(contest=contest, initial={"problem_instance": problem})
+    if request.method == "POST" and action == "upload":
+        form = ReferenceForm(request.POST, request.FILES, contest=contest)
         if form.is_valid():
             data = form.cleaned_data
             for filename, source in data["sources"]:
@@ -123,12 +133,54 @@ def references_view(request):
                 )
             mark_dirty(contest)
             messages.success(request, _("Added %(count)d references.") % {"count": len(data["sources"])})
-            return redirect(f"{reverse('llmdetect_references', kwargs={'contest_id': contest.id})}?problem={data['problem_instance'].id}")
+            return redirect(_references_url(contest, data["problem_instance"].id))
+    elif request.method == "POST" and action == "generate":
+        generate_form = GenerateForm(request.POST, contest=contest)
+        if generate_form.is_valid():
+            data = generate_form.cleaned_data
+            jobs = 0
+            for choice in data["models"]:
+                provider, model = choice.split(":", 1)
+                for prompt in data["prompts"]:
+                    GenerationJob.objects.create(
+                        problem_instance=data["problem_instance"],
+                        provider=provider,
+                        model=model,
+                        prompt_variant=prompt,
+                        count=data["count"],
+                        statement=data["statement"],
+                        created_by=request.user,
+                    )
+                    jobs += 1
+            messages.success(request, _("Queued %(count)d generation jobs.") % {"count": jobs})
+            return redirect(_references_url(contest, data["problem_instance"].id) + "#generate")
+    elif request.method == "POST":
+        raise PermissionDenied
+    elif problem and request.GET.get("statement"):
+        pi = get_object_or_404(ProblemInstance, id=problem, contest=contest)
+        try:
+            text = statement_text(pi)
+        except Exception:
+            text = ""
+        if not text:
+            messages.warning(request, _("Could not read the statement of this problem; paste its text."))
+        generate_form = GenerateForm(contest=contest, initial={"problem_instance": pi.id, "statement": text})
+
     references = LLMReferenceSolution.objects.filter(problem_instance__contest=contest).select_related("problem_instance")
-    problem = request.GET.get("problem")
+    jobs = GenerationJob.objects.filter(problem_instance__contest=contest).select_related("problem_instance")
     if problem:
         references = references.filter(problem_instance_id=problem)
-    return TemplateResponse(request, "llmdetect/references.html", {"form": form, "references": references})
+        jobs = jobs.filter(problem_instance_id=problem)
+    context = {
+        "form": form,
+        "generate_form": generate_form,
+        "references": references,
+        "jobs": jobs[:30],
+        "providers_configured": bool(providers()),
+        "prompts": [(key, label, instruction) for key, (label, instruction) in PROMPTS.items()],
+        "problem": problem,
+    }
+    return TemplateResponse(request, "llmdetect/references.html", context)
 
 
 @require_POST

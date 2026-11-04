@@ -5,16 +5,86 @@
 
 {% block styles %}
 {{ block.super }}
-<style>.llm-code { max-height: 16rem; overflow: auto; font-size: .75rem; white-space: pre; background: var(--bs-tertiary-bg); padding: .5rem; }</style>
+<style>
+    .llm-code { max-height: 16rem; overflow: auto; font-size: .75rem; white-space: pre; background: var(--bs-tertiary-bg); padding: .5rem; }
+    .llm-checks ul { list-style: none; padding-left: 0; margin-bottom: 0; }
+</style>
 {% endblock %}
 
 {% block main-content %}
 <p><a href="{% url 'llmdetect_panel' contest_id=contest.id %}">← {% trans "LLM detection" %}</a></p>
 <h1>{% trans "LLM references" %}</h1>
-<p class="small text-muted">{% blocktrans %}Before the round, generate tens of solutions per problem with the models participants use and with prompts that imitate them ("write like a high-school student, short, no comments", a sample of the participant's code as a style to copy, fixing a wrong solution). Keep wrong solutions too: their mistakes are a strong fingerprint. Only problem statements go to external models, never participants' code.{% endblocktrans %}</p>
+<p class="small text-muted">{% blocktrans %}Before the round, get tens of solutions per problem from the models participants use and with prompts that imitate them. Keep wrong solutions too: their mistakes are a strong fingerprint. Only problem statements go to external models, never participants' code.{% endblocktrans %}</p>
 
+<h2 class="h4 mt-4" id="generate">{% trans "Generate with LLMs" %}</h2>
+{% if not providers_configured %}
+<div class="alert alert-secondary small">
+    {% blocktrans %}No models are configured. Add <code>LLMDETECT_PROVIDERS</code> to the settings (see the module's README): any OpenAI-compatible API (OpenRouter, Google Gemini, Groq, Mistral, a local Ollama, OpenAI...) or Anthropic.{% endblocktrans %}
+</div>
+{% else %}
+<div class="alert alert-warning small">
+    {% blocktrans %}Free tiers of some providers may use what you send to train their models. Before the camp the statements are secret: prefer paid tiers that do not train on your data, or a model running on your own server, for unpublished problems.{% endblocktrans %}
+</div>
+<form method="get" action="#generate" class="row g-2 align-items-end mb-2">
+    <div class="col-md-4">
+        <label class="form-label" for="load-problem">{% trans "Problem" %}</label>
+        <select name="problem" id="load-problem" class="form-select">
+            {% for pi in generate_form.fields.problem_instance.queryset %}
+            <option value="{{ pi.id }}"{% if problem == pi.id|stringformat:"d" %} selected{% endif %}>{{ pi }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3">
+        <button type="submit" name="statement" value="1" class="btn btn-outline-secondary">{% trans "Load statement" %}</button>
+    </div>
+</form>
+<form method="post" class="row g-2 mb-3">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="generate">
+    {{ generate_form.non_field_errors }}
+    <div class="col-md-4">{{ generate_form.problem_instance.label_tag }} {{ generate_form.problem_instance }} {{ generate_form.problem_instance.errors }}</div>
+    <div class="col-md-4">{{ generate_form.count.label_tag }} {{ generate_form.count }} {{ generate_form.count.errors }}</div>
+    <div class="col-12">
+        {{ generate_form.statement.label_tag }} {{ generate_form.statement }}
+        <div class="form-text">{{ generate_form.statement.help_text }}</div>
+        {{ generate_form.statement.errors }}
+    </div>
+    <div class="col-md-6 llm-checks small">{{ generate_form.models.label_tag }} {{ generate_form.models }} {{ generate_form.models.errors }}</div>
+    <div class="col-md-6 llm-checks small">
+        {{ generate_form.prompts.label_tag }} {{ generate_form.prompts }} {{ generate_form.prompts.errors }}
+        <details class="mt-1"><summary class="text-muted">{% trans "What the prompts say" %}</summary>
+            <ul class="small">{% for key, label, instruction in prompts %}<li><strong>{{ label }}</strong>: {{ instruction }}</li>{% endfor %}</ul>
+        </details>
+    </div>
+    <div class="col-12"><button type="submit" class="btn btn-primary">{% trans "Generate" context "llmdetect" %}</button>
+        <span class="form-text">{% trans "Generation runs in the background; refresh this page to see the progress." %}</span></div>
+</form>
+{% endif %}
+
+{% if jobs %}
+<div class="table-responsive">
+<table class="table table-sm small align-middle">
+    <thead><tr><th>{% trans "Problem" %}</th><th>{% trans "Model" %}</th><th>{% trans "Prompt" %}</th><th>{% trans "Done" context "llmdetect" %}</th><th>{% trans "Status" context "llmdetect" %}</th><th></th></tr></thead>
+    <tbody>
+    {% for job in jobs %}
+        <tr>
+            <td>{{ job.problem_instance.short_name }}</td>
+            <td>{{ job.provider }} – {{ job.model }}</td>
+            <td>{{ job.prompt_variant }}</td>
+            <td>{{ job.produced }} / {{ job.count }}</td>
+            <td>{% if job.status == "failed" %}<span class="text-danger">{{ job.get_status_display }}</span>{% elif job.status == "done" %}<span class="text-success">{{ job.get_status_display }}</span>{% else %}{{ job.get_status_display }}{% endif %}</td>
+            <td class="text-muted">{{ job.error|truncatechars:160 }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+
+<h2 class="h4 mt-4">{% trans "Add by hand" %}</h2>
 <form method="post" enctype="multipart/form-data" class="row g-2 mb-4">
     {% csrf_token %}
+    <input type="hidden" name="action" value="upload">
     {{ form.non_field_errors }}
     <div class="col-md-3">{{ form.problem_instance.label_tag }} {{ form.problem_instance }}</div>
     <div class="col-md-3">{{ form.model_name.label_tag }} {{ form.model_name }}</div>
@@ -24,6 +94,7 @@
     <div class="col-12"><button type="submit" class="btn btn-primary">{% trans "Add" %}</button></div>
 </form>
 
+<h2 class="h4 mt-4">{% blocktrans count counter=references|length %}{{ counter }} reference{% plural %}{{ counter }} references{% endblocktrans %}</h2>
 {% for r in references %}
 <div class="mb-3">
     <div class="d-flex align-items-center gap-2">
