@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. The upstream SIO2 guidance for coding agents is imported below; this file adds what is specific to this fork.
+
+@AGENTS.md
 
 OIOIOI is the Django web interface of SIO2, a platform for algorithmic contests (szkopul.edu.pl, Polish Olympiad in Informatics). Python 3.13, Django 5.2, PostgreSQL, Celery/RabbitMQ, Filetracker for file storage, sioworkers for judging.
 

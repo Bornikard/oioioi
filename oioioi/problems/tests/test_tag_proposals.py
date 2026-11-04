@@ -68,13 +68,13 @@ class TestAlgorithmTagsProposalHintsEnglish(TestAlgorithmTagsProposalHintsBase):
         response = self.client.get(self.get_query_url({"query": "najdłuższy"}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Longest common increasing subsequence")
-        self.assertNotContains(response, b"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
+        self.assertNotContains(response, rb"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
         self.assertNotContains(response, "lcis")
 
         response = self.client.get(self.get_query_url({"query": "l"}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Longest common increasing subsequence")
-        self.assertNotContains(response, b"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
+        self.assertNotContains(response, rb"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
         self.assertNotContains(response, "lcis")
         self.assertNotContains(response, "Problem plecakowy")
 
@@ -99,24 +99,24 @@ class TestAlgorithmTagsProposalHintsPolish(TestAlgorithmTagsProposalHintsBase):
 
         response = self.client.get(self.get_query_url({"query": "greedy"}))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, b"Zach\u0142anny")
+        self.assertContains(response, rb"Zach\u0142anny")
         self.assertNotContains(response, "Greedy")
 
         # Use a byte string in the query to ensure a proper url encoding.
         response = self.client.get(self.get_query_url({"query": "ZAchłan"}))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, b"Zach\u0142anny")
+        self.assertContains(response, rb"Zach\u0142anny")
         self.assertNotContains(response, "Greedy")
 
         response = self.client.get(self.get_query_url({"query": "longest"}))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, b"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
+        self.assertContains(response, rb"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
         self.assertNotContains(response, "Longest common increasing subsequence")
         self.assertNotContains(response, "lcis")
 
         response = self.client.get(self.get_query_url({"query": "lcis"}))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, b"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
+        self.assertContains(response, rb"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
         self.assertNotContains(response, "Longest common increasing subsequence")
         self.assertNotContains(response, "lcis")
 

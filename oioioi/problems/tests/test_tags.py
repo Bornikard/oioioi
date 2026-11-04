@@ -20,7 +20,7 @@ class TestAlgorithmTagLabel(TestCase):
     def test_algorithm_tag_label_view(self):
         response = self.get_tag_labels({"name": "Najdłuższy wspólny podciąg rosnący", "proposed": "-1"})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, b"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
+        self.assertContains(response, rb"Najd\u0142u\u017cszy wsp\u00f3lny podci\u0105g rosn\u0105cy")
 
         response = self.get_tag_labels({"name": "Programowanie dynamiczne", "proposed": "-1"})
         self.assertEqual(response.status_code, 200)
