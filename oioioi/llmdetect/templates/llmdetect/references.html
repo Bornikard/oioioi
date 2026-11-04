@@ -19,12 +19,13 @@
 <h2 class="h4 mt-4" id="generate">{% trans "Generate with LLMs" %}</h2>
 {% if not providers_configured %}
 <div class="alert alert-secondary small">
-    {% blocktrans %}No models are configured. Add <code>LLMDETECT_PROVIDERS</code> to the settings (see the module's README): any OpenAI-compatible API (OpenRouter, Google Gemini, Groq, Mistral, a local Ollama, OpenAI...) or Anthropic.{% endblocktrans %}
+    {% blocktrans %}No models are configured. Add <code>LLMDETECT_PROVIDERS</code> to the settings (see the module's README): any OpenAI-compatible API (OpenRouter, Google Gemini, Groq, Mistral, a local Ollama, OpenAI...) or Anthropic. Without them you can still copy the prompts below into any chat and add the answers by hand.{% endblocktrans %}
 </div>
 {% else %}
 <div class="alert alert-warning small">
     {% blocktrans %}Free tiers of some providers may use what you send to train their models. Before the camp the statements are secret: prefer paid tiers that do not train on your data, or a model running on your own server, for unpublished problems.{% endblocktrans %}
 </div>
+{% endif %}
 <form method="get" action="#generate" class="row g-2 align-items-end mb-2">
     <div class="col-md-4">
         <label class="form-label" for="load-problem">{% trans "Problem" %}</label>
@@ -43,13 +44,25 @@
     <input type="hidden" name="action" value="generate">
     {{ generate_form.non_field_errors }}
     <div class="col-md-4">{{ generate_form.problem_instance.label_tag }} {{ generate_form.problem_instance }} {{ generate_form.problem_instance.errors }}</div>
-    <div class="col-md-4">{{ generate_form.count.label_tag }} {{ generate_form.count }} {{ generate_form.count.errors }}</div>
+    {% if providers_configured %}<div class="col-md-4">{{ generate_form.count.label_tag }} {{ generate_form.count }} {{ generate_form.count.errors }}</div>{% endif %}
     <div class="col-12">
         {{ generate_form.statement.label_tag }} {{ generate_form.statement }}
         <div class="form-text">{{ generate_form.statement.help_text }}</div>
         {{ generate_form.statement.errors }}
     </div>
-    <div class="col-md-6 llm-checks small">{{ generate_form.models.label_tag }} {{ generate_form.models }} {{ generate_form.models.errors }}</div>
+    <div class="col-12">
+        <span class="small me-1">{% trans "Copy the prompt to paste into a chat:" %}</span>
+        {% for key, label, instruction in prompts %}
+        <button type="button" class="btn btn-sm btn-outline-secondary mb-1 js-copy-prompt" data-instruction="{{ instruction }}" title="{{ instruction }}">{{ label }}</button>
+        {% endfor %}
+        <div class="form-text">{% trans "Then paste the whole answer under Add by hand; only its code is kept. Name the chat and the prompt there." %}</div>
+    </div>
+    {% if providers_configured %}
+    <div class="col-md-6 llm-checks small">
+        {{ generate_form.models.label_tag }}
+        <label class="ms-2 text-muted"><input type="checkbox" class="js-all-models"> {% trans "all" context "llmdetect" %}</label>
+        {{ generate_form.models }} {{ generate_form.models.errors }}
+    </div>
     <div class="col-md-6 llm-checks small">
         {{ generate_form.prompts.label_tag }} {{ generate_form.prompts }} {{ generate_form.prompts.errors }}
         <details class="mt-1"><summary class="text-muted">{% trans "What the prompts say" %}</summary>
@@ -57,8 +70,68 @@
         </details>
     </div>
     <div class="col-12"><button type="submit" class="btn btn-primary">{% trans "Generate" context "llmdetect" %}</button>
-        <span class="form-text">{% trans "Generation runs in the background; refresh this page to see the progress." %}</span></div>
+        <span class="form-text">{% trans "Requests go to whichever provider may be asked, within each one's limits; a provider that runs out waits for its reset. Refresh this page to see the progress." %}</span></div>
+    {% endif %}
 </form>
+{% trans "Copied" context "llmdetect" as copied_label %}
+<script>
+(function () {
+    var statement = document.getElementById("id_statement");
+    function copy(text, done) {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+        } else {
+            fallback(text, done);
+        }
+    }
+    function fallback(text, done) {
+        var area = document.createElement("textarea");
+        area.value = text;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+        done();
+    }
+    document.querySelectorAll(".js-copy-prompt").forEach(function (button) {
+        button.addEventListener("click", function () {
+            // The same text the generator sends: the instruction, a blank line, the statement.
+            var text = button.dataset.instruction + "\n\n" + statement.value.trim();
+            copy(text, function () {
+                var label = button.textContent;
+                button.textContent = "{{ copied_label|escapejs }}";
+                setTimeout(function () { button.textContent = label; }, 1500);
+            });
+        });
+    });
+    var all = document.querySelector(".js-all-models");
+    if (all) {
+        all.addEventListener("change", function () {
+            document.querySelectorAll("input[name='models']").forEach(function (box) { box.checked = all.checked; });
+        });
+    }
+})();
+</script>
+
+{% if provider_rows %}
+<div class="table-responsive">
+<table class="table table-sm small align-middle">
+    <thead><tr><th>{% trans "Provider" context "llmdetect" %}</th><th>{% trans "Models" context "llmdetect" %}</th><th title="{% trans 'Requests made on the current quota day of the provider.' %}">{% trans "Today" context "llmdetect" %}</th><th>{% trans "Next request" %}</th><th></th></tr></thead>
+    <tbody>
+    {% for row in provider_rows %}
+        <tr>
+            <td>{{ row.name }}</td>
+            <td>{{ row.models }}</td>
+            <td>{{ row.requests }}{% if row.limit %} / {{ row.limit }}{% endif %}</td>
+            <td>{% if row.ready_at %}{{ row.ready_at|date:"d.m H:i" }}{% else %}{% trans "now" context "llmdetect" %}{% endif %}</td>
+            <td class="text-muted">{{ row.error|truncatechars:120 }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
 {% endif %}
 
 {% if jobs %}
@@ -72,7 +145,7 @@
             <td>{{ job.provider }} – {{ job.model }}</td>
             <td>{{ job.prompt_variant }}</td>
             <td>{{ job.produced }} / {{ job.count }}</td>
-            <td>{% if job.status == "failed" %}<span class="text-danger">{{ job.get_status_display }}</span>{% elif job.status == "done" %}<span class="text-success">{{ job.get_status_display }}</span>{% else %}{{ job.get_status_display }}{% endif %}</td>
+            <td>{% if job.status == "failed" %}<span class="text-danger">{{ job.get_status_display }}</span>{% elif job.status == "done" %}<span class="text-success">{{ job.get_status_display }}</span>{% elif job.waiting_until %}{% blocktrans with time=job.waiting_until|date:"d.m H:i" %}waiting until {{ time }}{% endblocktrans %}{% else %}{{ job.get_status_display }}{% endif %}</td>
             <td class="text-muted">{{ job.error|truncatechars:160 }}</td>
         </tr>
     {% endfor %}

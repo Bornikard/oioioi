@@ -46,6 +46,18 @@ services:
       RABBITMQ_PASSWORD: 'oioioi'
       FILETRACKER_LISTEN_ADDR: '0.0.0.0'
       FILETRACKER_LISTEN_PORT: '9999'
+      # Keys of LLM providers for oioioi.llmdetect, from .env (empty when not set).
+      OPENROUTER_API_KEY: '${OPENROUTER_API_KEY:-}'
+      GEMINI_API_KEY: '${GEMINI_API_KEY:-}'
+      GROQ_API_KEY: '${GROQ_API_KEY:-}'
+      MISTRAL_API_KEY: '${MISTRAL_API_KEY:-}'
+      CEREBRAS_API_KEY: '${CEREBRAS_API_KEY:-}'
+      GITHUB_MODELS_TOKEN: '${GITHUB_MODELS_TOKEN:-}'
+      NVIDIA_API_KEY: '${NVIDIA_API_KEY:-}'
+      CLOUDFLARE_ACCOUNT_ID: '${CLOUDFLARE_ACCOUNT_ID:-}'
+      CLOUDFLARE_API_TOKEN: '${CLOUDFLARE_API_TOKEN:-}'
+      OPENAI_API_KEY: '${OPENAI_API_KEY:-}'
+      ANTHROPIC_API_KEY: '${ANTHROPIC_API_KEY:-}'
     ports:
       - "${SIO_PORT:-8888}:8000"
       # sioworkersd and filetracker for workers on other machines (no authentication).

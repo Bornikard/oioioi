@@ -17,7 +17,7 @@ from oioioi.contests.models import ProblemInstance
 from oioioi.contests.utils import contest_exists, is_contest_admin
 from oioioi.llmdetect.explain import SIGNAL_LABELS, habit_rows, profile_features, signal_rows
 from oioioi.llmdetect.forms import DecisionForm, GenerateForm, ReferenceForm, SettingsForm
-from oioioi.llmdetect.generation import PROMPTS, providers, statement_text
+from oioioi.llmdetect.generation import PROMPTS, provider_rows, providers, statement_text
 from oioioi.llmdetect.models import GenerationJob, LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, get_config, mark_dirty
 from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, read_source, update_if_needed, user_rankings
 from oioioi.programs.models import ProgramSubmission
@@ -111,6 +111,14 @@ def _references_url(contest, problem_id=None):
     return f"{url}?problem={problem_id}" if problem_id else url
 
 
+def _with_waiting(jobs, rows):
+    """Marks queued jobs whose provider cannot be asked yet."""
+    waiting = {row["name"]: row["ready_at"] for row in rows}
+    for job in jobs:
+        job.waiting_until = waiting.get(job.provider) if job.status == GenerationJob.QUEUED else None
+    return jobs
+
+
 @enforce_condition(contest_exists & is_contest_admin)
 def references_view(request):
     contest = request.contest
@@ -166,6 +174,7 @@ def references_view(request):
             messages.warning(request, _("Could not read the statement of this problem; paste its text."))
         generate_form = GenerateForm(contest=contest, initial={"problem_instance": pi.id, "statement": text})
 
+    rows = provider_rows() if providers() else []
     references = LLMReferenceSolution.objects.filter(problem_instance__contest=contest).select_related("problem_instance")
     jobs = GenerationJob.objects.filter(problem_instance__contest=contest).select_related("problem_instance")
     if problem:
@@ -175,8 +184,9 @@ def references_view(request):
         "form": form,
         "generate_form": generate_form,
         "references": references,
-        "jobs": jobs[:30],
+        "jobs": _with_waiting(list(jobs[:30]), rows),
         "providers_configured": bool(providers()),
+        "provider_rows": rows,
         "prompts": [(key, label, instruction) for key, (label, instruction) in PROMPTS.items()],
         "problem": problem,
     }

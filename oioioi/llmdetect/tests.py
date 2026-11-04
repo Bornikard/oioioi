@@ -13,7 +13,7 @@ from django.core.management import call_command
 from django.http import HttpResponse
 from django.test import RequestFactory, override_settings
 from django.urls import reverse
-from django.utils import translation
+from django.utils import timezone, translation
 
 from oioioi.base.tests import TestCase
 from oioioi.contests.models import Contest, ContestPermission, ProblemInstance, Round
@@ -21,10 +21,19 @@ from oioioi.contests.scores import IntegerScore
 from oioioi.llmdetect import features as F
 from oioioi.llmdetect.controllers import LLMDetectContestControllerMixin
 from oioioi.llmdetect.explain import HABIT_LABELS, SIGNAL_LABELS, describe, habit_value
-from oioioi.llmdetect.generation import PROMPTS, build_prompt, extract_code
+from oioioi.llmdetect.generation import PROMPTS, _seconds, build_prompt, extract_code, next_reset, provider_state
 from oioioi.llmdetect.habits import extract_habits
 from oioioi.llmdetect.middleware import ProblemViewMiddleware
-from oioioi.llmdetect.models import GenerationJob, LLMDetectConfig, LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, SubmissionFeatures
+from oioioi.llmdetect.models import (
+    GenerationJob,
+    LLMDetectConfig,
+    LLMReferenceSolution,
+    ProblemViewEvent,
+    ProviderState,
+    ReviewDecision,
+    RiskAssessment,
+    SubmissionFeatures,
+)
 from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, compute_features, needs_update, user_rankings
 from oioioi.problems.models import Problem
 from oioioi.programs.models import ProgramSubmission
@@ -523,6 +532,16 @@ def _chat_response(text, status=200):
 
 
 class TestGenerationHelpers(SimpleTestCase):
+    def test_rate_limit_headers(self):
+        now = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
+        self.assertEqual(_seconds("30"), 30)
+        self.assertEqual(_seconds("2m59.5s"), 179.5)
+        self.assertEqual(_seconds("1h"), 3600)
+        self.assertEqual(_seconds(str(int((now + timedelta(seconds=90)).timestamp() * 1000)), now), 90)
+        self.assertEqual(_seconds("Wed, 04 Nov 2026 12:10:00 GMT", now), 600)
+        self.assertIsNone(_seconds("soon"))
+        self.assertIsNone(_seconds(None))
+
     def test_extract_code(self):
         answer = "Here is the solution:\n```cpp\nint main() {}\n```\nAnd a test:\n```\n1 2\n```"
         self.assertEqual(extract_code(answer), "int main() {}\n")
@@ -654,4 +673,67 @@ class TestGeneration(LLMDetectTestCase):
     @override_settings(LLMDETECT_PROVIDERS={})
     def test_no_providers(self):
         self.assertTrue(self.client.login(username="test_admin"))
-        self.assertContains(self.client.get(self._url()), "No models are configured")
+        response = self.client.get(self._url())
+        self.assertContains(response, "No models are configured")
+        # Prompts can still be copied into a chat by hand.
+        for _label, instruction in PROMPTS.values():
+            self.assertContains(response, f'data-instruction="{instruction}"')
+
+    @override_settings(
+        LLMDETECT_PROVIDERS={
+            "a": {"type": "openai", "base_url": "https://a.example/v1", "models": ["m"], "min_interval": 3600},
+            "b": {"type": "openai", "base_url": "https://b.example/v1", "models": ["m"], "min_interval": 3600},
+        }
+    )
+    def test_requests_alternate_between_providers(self):
+        first = self._job(provider="a", model="m", count=3)
+        second = self._job(provider="b", model="m", count=3)
+        with patch("oioioi.llmdetect.generation.requests.post", return_value=_chat_response("int main(){}")) as post:
+            call_command("llmdetect_generator", "--once", stdout=StringIO())
+        # One request each; both then wait for their min_interval.
+        urls = [call.args[0] for call in post.call_args_list]
+        self.assertEqual(urls, ["https://a.example/v1/chat/completions", "https://b.example/v1/chat/completions"])
+        for job in (first, second):
+            job.refresh_from_db()
+            self.assertEqual((job.produced, job.status), (1, GenerationJob.QUEUED))
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.assertContains(self.client.get(self._url()), "waiting until")
+
+    @override_settings(LLMDETECT_PROVIDERS={"free": {**PROVIDERS["free"], "daily_limit": 2, "reset_utc_hour": 8}})
+    def test_daily_limit_waits_for_the_reset(self):
+        job = self._job(count=5)
+        with patch("oioioi.llmdetect.generation.requests.post", return_value=_chat_response("int main(){}")) as post:
+            call_command("llmdetect_generator", "--once", stdout=StringIO())
+        job.refresh_from_db()
+        self.assertEqual((post.call_count, job.produced, job.status), (2, 2, GenerationJob.QUEUED))
+        self.assertEqual(ProviderState.objects.get(provider="free").requests_today, 2)
+        # The next quota day starts at 8:00 UTC, and the counter starts again.
+        config = {**PROVIDERS["free"], "reset_utc_hour": 8}
+        reset = next_reset(config, timezone.now())
+        self.assertEqual((reset.hour, reset.minute), (8, 0))
+        self.assertEqual(provider_state("free", config, reset + timedelta(minutes=1)).requests_today, 0)
+
+    def test_refusing_provider_is_paused_without_failing_the_job(self):
+        job = self._job(count=1)
+        limited = MagicMock(status_code=429, text="daily limit reached", headers={"retry-after": "7200"})
+        with patch("oioioi.llmdetect.generation.requests.post", return_value=limited) as post:
+            call_command("llmdetect_generator", "--once", stdout=StringIO())
+        job.refresh_from_db()
+        self.assertEqual((post.call_count, job.status, job.produced), (1, GenerationJob.QUEUED, 0))
+        self.assertIn("HTTP 429", job.error)
+        state = ProviderState.objects.get(provider="free")
+        self.assertGreater(state.paused_until, timezone.now() + timedelta(minutes=110))
+        self.assertEqual(state.strikes, 1)
+
+    def test_models_command(self):
+        listing = MagicMock(status_code=200)
+        listing.json.return_value = {"data": [{"id": "small:free"}, {"id": "other:free"}, {"id": "paid"}]}
+        with patch("oioioi.llmdetect.management.commands.llmdetect_models.requests.get", return_value=listing) as get:
+            out = StringIO()
+            call_command("llmdetect_models", "free", "--free", stdout=out)
+        self.assertEqual(get.call_args.args[0], "https://example.com/v1/models")
+        lines = out.getvalue().splitlines()
+        self.assertIn(" * small:free", lines)
+        self.assertIn("   other:free", lines)
+        self.assertIn(" ! big:free  (configured, but not offered)", lines)
+        self.assertNotIn("   paid", lines)

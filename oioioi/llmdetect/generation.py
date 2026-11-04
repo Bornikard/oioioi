@@ -24,17 +24,16 @@ Providers are configured in ``settings.LLMDETECT_PROVIDERS``::
 import io
 import logging
 import re
-import time
 import zipfile
+from datetime import UTC, datetime, timedelta
 
 import requests
 from django.conf import settings
-from django.db import connection, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
-from oioioi.llmdetect.models import GenerationJob, LLMReferenceSolution, mark_dirty
+from oioioi.llmdetect.models import GenerationJob, LLMReferenceSolution, ProviderState, mark_dirty
 from oioioi.problems.utils import query_statement
 
 logger = logging.getLogger(__name__)
@@ -147,6 +146,52 @@ def code_of_chat_answer(text):
     return extract_code(text) if _CODE_BLOCK_RE.search(text) else text
 
 
+class QuotaError(GenerationError):
+    """The provider refused for now (rate or daily limit)."""
+
+    def __init__(self, message, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+_DURATION_RE = re.compile(r"(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m(?!s))?(?:(\d+(?:\.\d+)?)s)?$")
+
+
+def _seconds(value, now=None):
+    """Seconds from a rate-limit header: seconds, a duration like "2m59.5s",
+    an HTTP date, or an epoch timestamp (seconds or milliseconds).
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        number = float(value)
+    except ValueError:
+        match = _DURATION_RE.match(value)
+        if match and any(match.groups()):
+            hours, minutes, seconds = (float(g) if g else 0.0 for g in match.groups())
+            return hours * 3600 + minutes * 60 + seconds
+        try:
+            from email.utils import parsedate_to_datetime
+
+            return max(0.0, (parsedate_to_datetime(value) - (now or timezone.now())).total_seconds())
+        except (TypeError, ValueError):
+            return None
+    if number > 1e11:  # epoch in milliseconds
+        number /= 1000
+    if number > 1e9:  # epoch in seconds
+        return max(0.0, number - (now or timezone.now()).timestamp())
+    return number
+
+
+def _retry_after(response):
+    for header in ("retry-after", "x-ratelimit-reset-requests", "x-ratelimit-reset"):
+        seconds = _seconds(response.headers.get(header))
+        if seconds is not None:
+            return seconds
+    return None
+
+
 def _openai_compatible(config, model, prompt):
     url = config["base_url"].rstrip("/") + "/chat/completions"
     headers = {"Content-Type": "application/json"}
@@ -154,14 +199,14 @@ def _openai_compatible(config, model, prompt):
         headers["Authorization"] = f"Bearer {config['api_key']}"
     headers.update(config.get("headers", {}))
     body = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": config.get("max_tokens", MAX_TOKENS)}
-    for attempt in range(MAX_RETRIES + 1):
+    try:
         response = requests.post(url, json=body, headers=headers, timeout=config.get("timeout", REQUEST_TIMEOUT))
-        if response.status_code == 429 and attempt < MAX_RETRIES:
-            time.sleep(_retry_after(response, attempt))
-            continue
-        if response.status_code >= 400:
-            raise GenerationError(f"HTTP {response.status_code}: {response.text[:300]}")
-        break
+    except requests.RequestException as error:
+        raise GenerationError(f"Connection error: {error}") from error
+    if response.status_code == 429:
+        raise QuotaError(f"HTTP 429: {response.text[:200]}", _retry_after(response))
+    if response.status_code >= 400:
+        raise GenerationError(f"HTTP {response.status_code}: {response.text[:300]}")
     try:
         content = response.json()["choices"][0]["message"]["content"]
     except (ValueError, KeyError, IndexError, TypeError) as error:
@@ -171,13 +216,6 @@ def _openai_compatible(config, model, prompt):
     if not content:
         raise GenerationError("Empty answer")
     return content
-
-
-def _retry_after(response, attempt):
-    try:
-        return min(120.0, float(response.headers.get("retry-after", "")))
-    except ValueError:
-        return 10.0 * 2**attempt
 
 
 def _anthropic(config, model, prompt):
@@ -193,6 +231,8 @@ def _anthropic(config, model, prompt):
             response = client.beta.messages.create(betas=["server-side-fallback-2026-07-01"], fallbacks="default", **kwargs)
         else:
             response = client.messages.create(**kwargs)
+    except anthropic.RateLimitError as error:
+        raise QuotaError(f"HTTP 429: {error.message}", _seconds(error.response.headers.get("retry-after"))) from error
     except anthropic.APIStatusError as error:
         raise GenerationError(f"HTTP {error.status_code}: {error.message}") from error
     except anthropic.APIConnectionError as error:
@@ -218,52 +258,151 @@ def ask(provider, model, prompt):
     return client(config, model, prompt)
 
 
-def run_job(job):
-    """Asks the model ``job.count`` times and stores the answers as references."""
-    config = providers().get(job.provider, {})
+# Scheduling: one request at a time, from any provider that may be asked
+# now, so that free tiers of several providers are used side by side.
+
+# A provider refusing this many times in a row waits for its daily reset.
+MAX_STRIKES = 4
+
+
+def _quota_day(config, now):
+    """The provider's quota day: days start at ``reset_utc_hour`` (UTC)."""
+    return (now - timedelta(hours=config.get("reset_utc_hour", 0))).astimezone(UTC).date()
+
+
+def next_reset(config, now):
+    hour = config.get("reset_utc_hour", 0)
+    day = _quota_day(config, now) + timedelta(days=1)
+    return datetime(day.year, day.month, day.day, tzinfo=UTC) + timedelta(hours=hour)
+
+
+def provider_state(name, config, now=None):
+    now = now or timezone.now()
+    state, _created = ProviderState.objects.get_or_create(provider=name, defaults={"day": _quota_day(config, now)})
+    day = _quota_day(config, now)
+    if state.day != day:
+        state.day = day
+        state.requests_today = 0
+        state.save(update_fields=["day", "requests_today"])
+    return state
+
+
+def ready_at(config, state, now):
+    """When the provider may be asked next; ``None`` means now."""
+    times = []
+    if state.paused_until and state.paused_until > now:
+        times.append(state.paused_until)
+    limit = config.get("daily_limit")
+    if limit and state.requests_today >= limit:
+        times.append(next_reset(config, now))
     interval = config.get("min_interval", 0)
-    prompt = build_prompt(job.prompt_variant, job.statement)
-    for i in range(job.produced, job.count):
-        if i and interval:
-            time.sleep(interval)
-        answer = ask(job.provider, job.model, prompt)
-        LLMReferenceSolution.objects.create(
-            problem_instance=job.problem_instance,
-            model_name=job.model,
-            prompt_variant=job.prompt_variant,
-            filename=f"{job.provider}__{job.prompt_variant}__{job.id}_{i + 1}.cpp",
-            source=extract_code(answer),
-            added_by=job.created_by,
-        )
-        job.produced = i + 1
-        job.save(update_fields=["produced"])
-        mark_dirty(job.problem_instance.contest)
+    if interval and state.last_request_at and state.last_request_at + timedelta(seconds=interval) > now:
+        times.append(state.last_request_at + timedelta(seconds=interval))
+    return max(times) if times else None
 
 
-def claim_job():
-    """The oldest queued job, marked as running, or ``None``."""
-    with transaction.atomic():
-        queued = GenerationJob.objects.filter(status=GenerationJob.QUEUED).order_by("id")
-        if connection.features.has_select_for_update_skip_locked:
-            queued = queued.select_for_update(skip_locked=True)
-        job = queued.first()
-        if job is None:
-            return None
-        job.status = GenerationJob.RUNNING
-        job.started_at = timezone.now()
-        job.save(update_fields=["status", "started_at"])
-    return job
+def next_request(now=None):
+    """The oldest queued job whose provider may be asked now, or ``None``."""
+    now = now or timezone.now()
+    configured = providers()
+    states = {}
+    for job in GenerationJob.objects.filter(status=GenerationJob.QUEUED).order_by("id"):
+        config = configured.get(job.provider)
+        if config is None:
+            _finish(job, GenerationJob.FAILED, f"Provider {job.provider} is not configured")
+            continue
+        if job.provider not in states:
+            states[job.provider] = provider_state(job.provider, config, now)
+        if ready_at(config, states[job.provider], now) is None:
+            return job
+    return None
 
 
-def process(job):
-    try:
-        run_job(job)
-    except Exception as error:
-        logger.warning("LLM reference generation job %s failed", job.id, exc_info=True)
-        job.status = GenerationJob.FAILED
-        job.error = str(error)[:1000]
-    else:
-        job.status = GenerationJob.DONE
-        job.error = ""
+def _finish(job, status, error=""):
+    job.status = status
+    job.error = error[:1000]
     job.finished_at = timezone.now()
     job.save(update_fields=["status", "error", "finished_at"])
+
+
+def perform(job):
+    """Asks for one solution of ``job`` and stores it."""
+    config = providers()[job.provider]
+    now = timezone.now()
+    state = provider_state(job.provider, config, now)
+    state.requests_today += 1
+    state.last_request_at = now
+    state.save(update_fields=["requests_today", "last_request_at"])
+    job.status = GenerationJob.RUNNING
+    job.started_at = job.started_at or now
+    job.save(update_fields=["status", "started_at"])
+    try:
+        answer = ask(job.provider, job.model, build_prompt(job.prompt_variant, job.statement))
+    except QuotaError as error:
+        _pause(job.provider, config, state, error)
+        job.status = GenerationJob.QUEUED
+        job.error = str(error)[:1000]
+        job.save(update_fields=["status", "error"])
+        return
+    except Exception as error:
+        logger.warning("LLM reference generation job %s failed", job.id, exc_info=True)
+        state.last_error = str(error)[:500]
+        state.save(update_fields=["last_error"])
+        _finish(job, GenerationJob.FAILED, str(error))
+        return
+    LLMReferenceSolution.objects.create(
+        problem_instance=job.problem_instance,
+        model_name=job.model,
+        prompt_variant=job.prompt_variant,
+        filename=f"{job.provider}__{job.prompt_variant}__{job.id}_{job.produced + 1}.cpp",
+        source=extract_code(answer),
+        added_by=job.created_by,
+    )
+    mark_dirty(job.problem_instance.contest)
+    state.strikes = 0
+    state.paused_until = None
+    state.save(update_fields=["strikes", "paused_until"])
+    job.produced += 1
+    job.error = ""
+    job.save(update_fields=["produced", "error"])
+    if job.produced >= job.count:
+        _finish(job, GenerationJob.DONE)
+    else:
+        job.status = GenerationJob.QUEUED
+        job.save(update_fields=["status"])
+
+
+def _pause(name, config, state, error):
+    now = timezone.now()
+    state.strikes += 1
+    reset = next_reset(config, now)
+    if error.retry_after is not None:
+        until = now + timedelta(seconds=min(error.retry_after, 26 * 3600))
+    elif state.strikes >= MAX_STRIKES:
+        until = reset
+    else:
+        until = min(reset, now + timedelta(seconds=60 * 2 ** (state.strikes - 1)))
+    state.paused_until = until
+    state.last_error = str(error)[:500]
+    state.save(update_fields=["strikes", "paused_until", "last_error"])
+    logger.info("LLM provider %s paused until %s: %s", name, until, error)
+
+
+def provider_rows(now=None):
+    """Usage of each configured provider today, for the panel."""
+    now = now or timezone.now()
+    rows = []
+    for name, config in providers().items():
+        state = provider_state(name, config, now)
+        rows.append(
+            {
+                "name": name,
+                "models": len(config.get("models", [])),
+                "requests": state.requests_today,
+                "limit": config.get("daily_limit"),
+                "ready_at": ready_at(config, state, now),
+                "reset": next_reset(config, now),
+                "error": state.last_error,
+            }
+        )
+    return rows

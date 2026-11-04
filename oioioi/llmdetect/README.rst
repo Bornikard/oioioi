@@ -43,8 +43,23 @@ high-school student, like an olympiad competitor, disguised) and how many
 solutions each. Exactly the text in the box, with a one-line instruction,
 is sent; participants' code never is. Jobs run in the background, in the
 ``llmdetect-generator`` supervisor program (``manage.py
-llmdetect_generator``; ``--once`` processes the queue and exits). Each
+llmdetect_generator``; ``--once`` stops when nothing can be done now). Each
 answer's longest code block becomes a reference.
+
+The generator makes one request at a time, to whichever provider may be
+asked now, so the free limits of all configured providers add up. Each
+provider can have ``min_interval`` (seconds between requests),
+``daily_limit`` (requests per quota day) and ``reset_utc_hour`` (when its
+quota day starts). A provider answering 429 waits for the time it gives
+(``Retry-After`` and rate-limit reset headers), or with growing pauses and,
+after a few in a row, until its daily reset; its jobs stay queued and go on
+by themselves. The page shows each provider's requests today and when it
+can be asked next. ``manage.py llmdetect_models [provider] [--free]``
+lists the models each provider offers.
+
+Without any provider, or for chats without an API, the *Copy* buttons put
+the exact prompt (instruction and statement) on the clipboard to paste into
+a chat; the answer is then added under *Add by hand*.
 
 Models are configured in ``LLMDETECT_PROVIDERS`` (an example is in the
 settings template). Two kinds of providers:

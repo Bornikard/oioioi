@@ -185,3 +185,18 @@ class GenerationJob(models.Model):
 
     class Meta:
         ordering = ("-id",)
+
+
+class ProviderState(models.Model):
+    """Requests made to an LLM provider on its current quota day, and
+    whether it asked to wait.
+    """
+
+    provider = models.CharField(max_length=100, unique=True)
+    day = models.DateField()
+    requests_today = models.PositiveIntegerField(default=0)
+    last_request_at = models.DateTimeField(null=True, blank=True)
+    paused_until = models.DateTimeField(null=True, blank=True)
+    # Refusals in a row; after a few, the provider waits for its daily reset.
+    strikes = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
