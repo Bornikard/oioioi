@@ -9,7 +9,7 @@ line, or not C++). Pure functions, no Django.
 import re
 import unicodedata
 
-from oioioi.llmdetect.features import C_FAMILY, LIBRARY_NAMES, keywords_of, lex
+from oioioi.llmdetect.features import C_FAMILY, COMMENT_LIMIT, LIBRARY_NAMES, keywords_of, lex
 
 # Values typical of LLM code, for habits where there is one. A change
 # towards them weighs more than a change in the other direction.
@@ -30,6 +30,10 @@ LLM_VALUES = {
     "naming": {"camelCase", "snake_case"},
     "function_names": {"descriptive"},
 }
+
+# Bounds on what is stored per submission.
+MAX_NAME = 64
+MAX_TEMPLATE_LINE = 200
 
 CATEGORICAL_HABITS = (
     "includes",
@@ -57,10 +61,10 @@ CHAT_PATTERNS = (
     ("here is", re.compile(r"\bhere(?:'s| is)\b", re.I)),
     ("explanation", re.compile(r"\bexplanation\s*:", re.I)),
     ("complexity", re.compile(r"\b(?:time|space)\s+complexity\b", re.I)),
-    ("big O", re.compile(r"\bO\((?:n|m|k|q|log|1|\w\s*[\*\+])[^)]*\)")),
+    ("big O", re.compile(r"\bO\((?:n|m|k|q|log|1|\w\s*[\*\+])[^)\n]{0,60}\)")),
     ("step N", re.compile(r"\bstep\s*\d+\s*[:.)]", re.I)),
     ("example usage", re.compile(r"\bexample usage\b", re.I)),
-    ("markdown", re.compile(r"\*\*\w[^*]*\*\*|`\w[^`]*`")),
+    ("markdown", re.compile(r"\*\*\w[^*\n]{0,200}\*\*|`\w[^`\n]{0,200}`")),
     ("approach", re.compile(r"\b(?:approach|intuition)\s*:", re.I)),
     ("edge case", re.compile(r"\bedge cases?\b", re.I)),
 )
@@ -221,7 +225,7 @@ def _size_constant(lines):
 
 
 def _main_signature(code):
-    match = re.search(r"\b(int|signed|auto|void)\s+main\s*\(([^)]*)\)", code)
+    match = re.search(r"\b(int|signed|auto|void)\s+main\s*\(([^)\n]{0,200})\)", code)
     if not match:
         return None
     args = match.group(2).strip()
@@ -234,7 +238,7 @@ def _main_signature(code):
 
 def _test_loop(code, function_names):
     solve = any(name in ("solve", "testcase", "test_case", "rozwiaz") for name in function_names)
-    loop = bool(re.search(r"while\s*\(\s*\w+\s*--\s*\)|for\s*\([^;]*;\s*\w+\s*<=?\s*(?:t|T|tests|q|Q)\s*;", code))
+    loop = bool(re.search(r"while\s*\(\s*\w+\s*--\s*\)|for\s*\([^;\n]{0,200};\s*\w+\s*<=?\s*(?:t|T|tests|q|Q)\s*;", code))
     if solve and loop:
         return "solve() in a test loop"
     if solve:
@@ -343,12 +347,13 @@ def extract_habits(source, language, pasted=False):
     "macros": [...], "identifiers": [...], "chat": [...], "paste_chars": [...]}``.
     """
     tokens, comments = lex(source, language)
+    comments = [comment[:COMMENT_LIMIT] for comment in comments]
     identifiers = _identifiers(tokens, language)
     result = {
         "values": {},
         "template": [],
         "macros": [],
-        "identifiers": sorted(set(identifiers))[:400],
+        "identifiers": sorted({name[:MAX_NAME] for name in identifiers})[:400],
         "chat": chat_leftovers(comments, source),
         "paste_chars": paste_characters(source),
     }
@@ -374,8 +379,8 @@ def extract_habits(source, language, pasted=False):
         stripped = _SPACING_RE.sub(r"\1", " ".join(line.split()))
         if stripped and stripped not in ("{", "}", "};"):
             template.append(stripped)
-    result["template"] = template[:60]
-    result["macros"] = sorted({m.group(1) for m in re.finditer(r"#define\s+([A-Za-z_]\w*)", code)})
+    result["template"] = [line[:MAX_TEMPLATE_LINE] for line in template[:60]]
+    result["macros"] = sorted({m.group(1)[:MAX_NAME] for m in re.finditer(r"#define\s+([A-Za-z_]\w*)", code)})[:100]
 
     pp = [line.strip() for line, _depth in lines if line.strip().startswith("#include")]
     if pp:

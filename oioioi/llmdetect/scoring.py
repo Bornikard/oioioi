@@ -70,6 +70,8 @@ TRUSTED_WEIGHT = 3.0
 # participants of a problem is boilerplate (input reading, fast IO...).
 BOILERPLATE_FRACTION = 0.4
 MIN_VARIANCE = 0.02
+# A profile uses at most this many (the latest) submissions per problem.
+PROFILE_PER_PROBLEM = 3
 # A user's risk is the sum of their this many worst problems.
 USER_TOP_PROBLEMS = 3
 # A habit counts when kept in this share of at least this many other submissions.
@@ -292,6 +294,7 @@ class ContestAssessor:
         for item in self.items:
             self.by_user[item.user_id].append(item)
             self.by_pi[item.pi_id].append(item)
+        self.profile_pool = self._profile_pools()
         self.confirmed = set(
             ReviewDecision.objects.filter(contest=self.contest, verdict=ReviewDecision.VERDICT_CONFIRMED, submission__isnull=False).values_list(
                 "submission_id", flat=True
@@ -412,9 +415,23 @@ class ContestAssessor:
                 value = 1.0 - math.prod(1.0 - PASTE_CHAR_STRENGTH.get(name, 0.4) for name in pasted_chars)
                 item.signals["paste_characters"] = (value, {"found": pasted_chars})
 
+    def _profile_pools(self):
+        """Per participant, the submissions their style profile is built from:
+        the last PROFILE_PER_PROBLEM on each problem (items are sorted by date).
+        Many submissions to one problem add little to a profile, and without
+        this bound each participant would cost the square of their submissions.
+        """
+        pools = {}
+        for user_id, user_items in self.by_user.items():
+            per_problem = defaultdict(list)
+            for item in user_items:
+                per_problem[item.pi_id].append(item)
+            pools[user_id] = [item for items in per_problem.values() for item in items[-PROFILE_PER_PROBLEM:]]
+        return pools
+
     def _history(self, item):
         """The participant's other submissions with their profile weights."""
-        return [(other, weight) for other in self.by_user[item.user_id] if (weight := self._profile_weight(item, other)) > 0]
+        return [(other, weight) for other in self.profile_pool[item.user_id] if (weight := self._profile_weight(item, other)) > 0]
 
     @staticmethod
     def _usual_lines(history, key, threshold=0.6):
@@ -553,7 +570,7 @@ class ContestAssessor:
                 sums = [0.0] * dims
                 squares = [0.0] * dims
                 style_sum = 0.0
-                for other in user_items:
+                for other in self.profile_pool[item.user_id]:
                     weight = self._profile_weight(item, other)
                     if weight <= 0:
                         continue

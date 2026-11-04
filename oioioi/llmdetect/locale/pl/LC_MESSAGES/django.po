@@ -571,6 +571,10 @@ msgid "No \"### reference\" lines found."
 msgstr "Nie znaleziono wierszy „### reference”."
 
 #, python-format
+msgid "More than %(count)d references; split them into several uploads."
+msgstr "Więcej niż %(count)d referencji; podziel je na kilka plików."
+
+#, python-format
 msgid "Line %(line)d: no code after the line."
 msgstr "Wiersz %(line)d: brak kodu po wierszu."
 

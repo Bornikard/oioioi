@@ -12,7 +12,12 @@ import zlib
 from collections import Counter
 
 # Bump when the features or fingerprints change, so stored ones get recomputed.
-FEATURES_VERSION = 2
+FEATURES_VERSION = 3
+
+# Bounds on what is stored per submission, so that crafted code cannot make
+# its stored analysis (and the memory to assess a contest) large.
+MAX_FINGERPRINTS = 4000
+MAX_LINE_HASHES = 5000
 
 C_FAMILY = "c"
 PYTHON = "python"
@@ -91,7 +96,11 @@ _OPERATORS = sorted(
     reverse=True,
 )
 _BINARY_OPS_RE = re.compile(r"(?<![=!<>+\-*/%&|^:])(==|!=|<=|>=|\+=|-=|\*=|/=|&&|\|\||=|\+|-|\*|/|%|<|>)(?![=+\-&|>])")
-_CODE_IN_COMMENT_RE = re.compile(r"(;\s*$|\bcout\b|\bprintf\b|\bcerr\b|\bprint\(|\bfor\s*\(|\bif\s*\(|\w+\s*\(.*\)\s*;|\w+\s*=\s*[\w(])")
+# Participants control this text: every pattern must run in linear time
+# (bounded repetitions, matches starting at word boundaries).
+_CODE_IN_COMMENT_RE = re.compile(r"(;\s*$|\bcout\b|\bprintf\b|\bcerr\b|\bprint\(|\bfor\s*\(|\bif\s*\(|\b\w+\s*\([^()\n]{0,200}\)\s*;|\b\w+\s*=\s*[\w(])")
+# Comments longer than this are only looked at up to it.
+COMMENT_LIMIT = 1000
 
 FINGERPRINT_K = 12
 FINGERPRINT_WINDOW = 6
@@ -261,7 +270,7 @@ def extract_features(source, language):
     loc = len(nonblank)
     per_100 = 100.0 / max(loc, 1)
     tokens, comments = lex(source, language)
-    comments = [c for c in comments if c.strip()]
+    comments = [c[:COMMENT_LIMIT] for c in comments if c.strip()]
     texts = [text for _kind, text in tokens]
     identifiers = _identifiers(tokens, language)
     distinct = set(identifiers)
@@ -310,7 +319,7 @@ def extract_features(source, language):
         "const_per_100": (counts["const"] + counts["constexpr"]) * per_100,
         "auto_per_100": counts["auto"] * per_100,
         "long_long_spelled_per_100": len(re.findall(r"\blong\s+long\b", source)) * per_100,
-        "reference_params_per_100": len(re.findall(r"\bconst\s+[\w:<>, ]+\s*&", source)) * per_100,
+        "reference_params_per_100": len(re.findall(r"\bconst\s+[\w:<>, ]{1,80}+&", source)) * per_100,
         # Layout.
         "brace_own_line_ratio": _ratio(sum(line == "{" for line in brace_lines), len(brace_lines)),
         "tab_indent_ratio": _ratio(sum(line.startswith("\t") for line in indented), len(indented)),
@@ -448,18 +457,26 @@ def fingerprints(source, language, k=FINGERPRINT_K, window=FINGERPRINT_WINDOW):
         return [zlib.crc32(" ".join(tokens).encode())] if tokens else []
     hashes = [zlib.crc32(" ".join(tokens[i : i + k]).encode()) for i in range(len(tokens) - k + 1)]
     if len(hashes) <= window:
-        return sorted(set(hashes))
+        return sorted(set(hashes))[:MAX_FINGERPRINTS]
     selected = set()
     for i in range(len(hashes) - window + 1):
         selected.add(min(hashes[i : i + window]))
-    return sorted(selected)
+    # The smallest hashes, as in MinHash: every document keeps the same part
+    # of the hash space, so containment between capped sets stays meaningful.
+    return sorted(selected)[:MAX_FINGERPRINTS]
 
 
 def line_hashes(source):
     """Hashes of the non-blank lines without whitespace, to count how many
     lines one version of a program adds to another.
     """
-    return [zlib.crc32("".join(line.split()).encode()) for line in source.splitlines() if line.strip()]
+    hashes = []
+    for line in source.splitlines():
+        if line.strip():
+            hashes.append(zlib.crc32("".join(line.split()).encode()))
+            if len(hashes) == MAX_LINE_HASHES:
+                break
+    return hashes
 
 
 def code_lines(source):

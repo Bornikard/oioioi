@@ -3,6 +3,7 @@ import json
 import os
 import random
 import tempfile
+import time
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from types import SimpleNamespace
@@ -778,3 +779,57 @@ class TestReferencesPage(LLMDetectTestCase):
         self.assertEqual(LLMReferenceSolution.objects.count(), 0)
         self.client.post(self._url(), {"action": "bulk", "text": "### reference\nint a(){}\n", "default_problem": self.pis[2].id})
         self.assertEqual(LLMReferenceSolution.objects.get().problem_instance, self.pis[2])
+
+
+class TestHostileCode(SimpleTestCase):
+    """Participants control the code that is analysed on every submission
+    (in the web request for pasted code, in the evaluation worker after
+    judging): no input may make the analysis slow or its stored result big.
+    """
+
+    N = 100 * 1024  # the default submission size limit
+
+    def _analyse(self, source, filename="a.cpp"):
+        analysis = F.analyze_source(source, filename)
+        return analysis, extract_habits(source, analysis["language"])
+
+    def test_no_quadratic_patterns(self):
+        n = self.N
+        cases = {
+            "big O in a comment": "// " + "O(n" * (n // 3),
+            "calls in a comment": "// " + "f(x)" * (n // 4),
+            "open parentheses in a comment": "// " + "a(" * (n // 2),
+            "block comment": "/*" + "f(x)" * (n // 4) + "*/",
+            "main( repeated": "int main(" * (n // 9),
+            "const without &": "const a " * (n // 8),
+            "for( without ;": "for(" * (n // 4),
+            "Python comment": "# " + "O(n" * (n // 3),
+        }
+        for name, source in cases.items():
+            start = time.monotonic()
+            self._analyse(source, "a.py" if name.startswith("Python") else "a.cpp")
+            # Each took 2-11 s before the patterns were made linear; ~0.1 s now.
+            self.assertLess(time.monotonic() - start, 2.0, name)
+
+    def test_stored_analysis_is_bounded(self):
+        n = self.N
+        for source in ("a\n" * (n // 2), " ".join(f"v{i}" for i in range(n // 7)), "".join(f"int g{i};\n" for i in range(n // 10))):
+            analysis, habits = self._analyse(source)
+            size = sum(len(json.dumps(value)) for value in (analysis["fingerprints"], analysis["line_hashes"], analysis["features"], habits))
+            self.assertLess(size, 100 * 1024)
+        self.assertLessEqual(len(F.fingerprints(" ".join(f"x{i} + {i};" for i in range(20000)), F.C_FAMILY)), F.MAX_FINGERPRINTS)
+
+    def test_unclosed_code_fences(self):
+        start = time.monotonic()
+        # The fences pair up into empty blocks, as with the previous regex.
+        self.assertEqual(extract_code("```cpp\n" * 300_000), "\n")
+        self.assertEqual(extract_code("Here:\n```cpp\nint a;\n```\nand\n```\nint bb;\n```"), "int bb;\n")
+        self.assertLess(time.monotonic() - start, 2.0)
+
+    def test_bulk_upload_limit(self):
+        from oioioi.llmdetect import prompts
+
+        with patch.object(prompts, "MAX_BULK_REFERENCES", 3):
+            references, errors = parse_references("### reference problem=abc\nint a;\n" * 4, {"abc": "pi"})
+        self.assertEqual(references, [])
+        self.assertIn("More than 3 references", errors[0])

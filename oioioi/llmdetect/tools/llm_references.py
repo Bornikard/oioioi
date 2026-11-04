@@ -100,7 +100,6 @@ EXAMPLE_CONFIG = {
     },
 }
 
-_CODE_BLOCK_RE = re.compile(r"```[ \t]*(?:c\+\+|cpp|cc|c|cxx)?[ \t]*\n(.*?)```", re.S | re.I)
 _HEADER_RE = re.compile(r"^###[ \t]*reference\b(.*)$", re.M | re.I)
 _ATTRIBUTE_RE = re.compile(r'(\w+)=(?:"([^"]*)"|(\S+))')
 _DURATION_RE = re.compile(r"(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m(?!s))?(?:(\d+(?:\.\d+)?)s)?$")
@@ -124,9 +123,23 @@ class ModelError(ProviderError):
     """The model cannot be used at all (e.g. it does not exist)."""
 
 
+_FENCE_LANGUAGES = ("", "c++", "cpp", "cc", "c", "cxx")
+
+
+def _code_blocks(text):
+    """The contents of closed ``` code blocks (C++ or untagged), in linear time."""
+    parts = text.split("```")
+    blocks = []
+    for i in range((len(parts) - 1) // 2):
+        tag, newline, body = parts[2 * i + 1].partition("\n")
+        if newline and tag.strip().lower() in _FENCE_LANGUAGES:
+            blocks.append(body)
+    return blocks
+
+
 def extract_code(answer):
     """The C++ code of an answer: its longest code block, or all of it."""
-    blocks = _CODE_BLOCK_RE.findall(answer)
+    blocks = _code_blocks(answer)
     if blocks:
         return max(blocks, key=len).strip() + "\n"
     return answer.strip() + "\n"

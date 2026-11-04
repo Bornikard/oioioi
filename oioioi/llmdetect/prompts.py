@@ -28,6 +28,9 @@ from django.utils.translation import pgettext_lazy
 from oioioi.problems.utils import query_statement
 
 PROMPTS_FORMAT = "llmdetect-prompts/1"
+MAX_STATEMENT_SIZE = 50 * 1024 * 1024
+# References added in one bulk upload at most.
+MAX_BULK_REFERENCES = 5000
 
 _TASK = "Solve this competitive programming problem in C++. Read the input from standard input and write the output to standard output."
 
@@ -53,7 +56,6 @@ PROMPTS = {
     ),
 }
 
-_CODE_BLOCK_RE = re.compile(r"```[ \t]*(?:c\+\+|cpp|cc|c|cxx)?[ \t]*\n(.*?)```", re.S | re.I)
 _HEADER_RE = re.compile(r"^###[ \t]*reference\b(.*)$", re.M | re.I)
 _ATTRIBUTE_RE = re.compile(r'(\w+)=(?:"([^"]*)"|(\S+))')
 
@@ -87,7 +89,8 @@ def _text_of(data, extension):
             names = sorted(archive.namelist(), key=lambda name: (not name.endswith("index.html"), name))
             for name in names:
                 inner = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
-                if inner in (".html", ".htm", ".pdf", ".txt"):
+                # A member that large is not a statement (or is a zip bomb).
+                if inner in (".html", ".htm", ".pdf", ".txt") and archive.getinfo(name).file_size <= MAX_STATEMENT_SIZE:
                     return _text_of(archive.read(name), inner)
         return ""
     if extension == ".txt":
@@ -123,9 +126,23 @@ def prompts_file(contest, statements, variants):
     return json.dumps(data, ensure_ascii=False, indent=1)
 
 
+_FENCE_LANGUAGES = ("", "c++", "cpp", "cc", "c", "cxx")
+
+
+def _code_blocks(text):
+    """The contents of closed ``` code blocks (C++ or untagged), in linear time."""
+    parts = text.split("```")
+    blocks = []
+    for i in range((len(parts) - 1) // 2):
+        tag, newline, body = parts[2 * i + 1].partition("\n")
+        if newline and tag.strip().lower() in _FENCE_LANGUAGES:
+            blocks.append(body)
+    return blocks
+
+
 def extract_code(answer):
     """The C++ code of an answer: its longest code block, or all of it."""
-    blocks = _CODE_BLOCK_RE.findall(answer)
+    blocks = _code_blocks(answer)
     if blocks:
         return max(blocks, key=len).strip() + "\n"
     return answer.strip() + "\n"
@@ -135,7 +152,7 @@ def code_of_chat_answer(text):
     """The code of a whole chat answer pasted by hand (prose and code
     fences dropped); text without code fences is returned as it is.
     """
-    return extract_code(text) if _CODE_BLOCK_RE.search(text) else text
+    return extract_code(text) if _code_blocks(text) else text
 
 
 def _attributes(text):
@@ -155,6 +172,8 @@ def parse_references(text, problems, default_problem=None):
     references = []
     if not headers:
         return [], [_g('No "### reference" lines found.')]
+    if len(headers) > MAX_BULK_REFERENCES:
+        return [], [_g("More than %(count)d references; split them into several uploads.") % {"count": MAX_BULK_REFERENCES}]
     if text[: headers[0].start()].strip():
         errors.append(_g('There is text before the first "### reference" line.'))
     for index, header in enumerate(headers):
