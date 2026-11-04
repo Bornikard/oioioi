@@ -322,14 +322,15 @@ wheels = [
 
 [[package]]
 name = "beautifulsoup4"
-version = "4.12.3"
+version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "soupsieve" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b3/ca/824b1195773ce6166d388573fc106ce56d4a805bd7427b624e063596ec58/beautifulsoup4-4.12.3.tar.gz", hash = "sha256:74e3d1928edc070d21748185c46e3fb33490f22f52a3addee9aee0f4f7781051", size = 581181, upload-time = "2024-01-17T16:53:17.902Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/65/318323f98dbee45d42dff61d8f047181bc6f2268a9068cfad035a46be5af/beautifulsoup4-4.15.0.tar.gz", hash = "sha256:288e3ca7d54b06f2ac191970bc275c1939cb46d450b255bf6718b04aa37ab4f7", size = 632571, upload-time = "2026-06-07T16:44:20.453Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/fe/e8c672695b37eecc5cbf43e1d0638d88d66ba3a44c4d321c796f4e59167f/beautifulsoup4-4.12.3-py3-none-any.whl", hash = "sha256:b80878c9f40111313e55da8ba20bdba06d8fa3969fc68304167741bbf9e082ed", size = 147925, upload-time = "2024-01-17T16:53:12.779Z" },
+    { url = "https://files.pythonhosted.org/packages/88/c6/92fcd42f1ba33e1184263f25bfabf3d27c383410470f169e4b8163bf9c17/beautifulsoup4-4.15.0-py3-none-any.whl", hash = "sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9", size = 109924, upload-time = "2026-06-07T16:44:21.566Z" },
 ]
 
 [[package]]
@@ -1062,14 +1063,14 @@ wheels = [
 
 [[package]]
 name = "django-otp"
-version = "1.2.2"
+version = "1.7.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/97/705e766e4e1c4bc1bd1ef34732d57451eafb7f5223d968c28719fef3d66c/django_otp-1.2.2.tar.gz", hash = "sha256:007a6354dabb3a1a54574bf73abf045ebbde0bb8734a38e2ed7845ba450f345e", size = 66391, upload-time = "2023-06-16T15:08:07.498Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/e9/db4349d7a866e6d5153b31fa740b17f5893723715edf7d1673615d9f462c/django_otp-1.7.5.tar.gz", hash = "sha256:7f554d21dcd035550c3b8e3f154b1f422fee71fdc75c8a3bf96e42a2ea6dafcc", size = 79637, upload-time = "2026-10-16T14:48:48.98Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/0c/1152687e6d0b13fd43d9d970ae59a6f7305904588f56ed97723f7a668689/django_otp-1.2.2-py3-none-any.whl", hash = "sha256:90765d5dac238a719f9550ac05681dd6307f513a81a10b6adb879b4abc6bc1a3", size = 71328, upload-time = "2023-06-16T15:08:04.937Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/bc/bda771669006e7e112bed31a330636ff0b3c3407b053c10c492368c35f6f/django_otp-1.7.5-py3-none-any.whl", hash = "sha256:475d4111e07d61616996f098d08d29884da6397273a11f53c1b8e8c75d27e1dc", size = 73805, upload-time = "2026-10-16T14:48:47.793Z" },
 ]
 
 [[package]]
@@ -1139,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "django-two-factor-auth"
-version = "1.18.0"
+version = "1.18.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
@@ -1148,9 +1149,9 @@ dependencies = [
     { name = "django-phonenumber-field" },
     { name = "qrcode" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e1/06/3d352dd4fe8c5a75f0de7fec413a81bf641e629ef113d5f7508003ec3a87/django_two_factor_auth-1.18.0.tar.gz", hash = "sha256:9307a38d7102981662f762f282966da6db76953c9f89d9d25a629993d545f517", size = 170380, upload-time = "2025-09-16T15:38:58.748Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/ba/68d8f5bf2b54869a6d32f234cc6651408bf7b11c393117e8750a6b820764/django_two_factor_auth-1.18.1.tar.gz", hash = "sha256:9d624db63123141cd95a6afe3d626105c3c29a7c8e25a3d93411dd1fac0be464", size = 176500, upload-time = "2025-09-27T17:36:52.578Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/0d/4ed2309acf33ff0ad161b947cd182532250f30390c19ce029f7da7ddbc62/django_two_factor_auth-1.18.0-py3-none-any.whl", hash = "sha256:3c1a6ece0bf9c72026457b2a66322b382d41ccdace4c328cf536f19f2ba60f3e", size = 301704, upload-time = "2025-09-16T15:38:56.954Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/85/042d8e380f57396d3221a2f23257444ec1020881b2d1210a4d7915f26586/django_two_factor_auth-1.18.1-py3-none-any.whl", hash = "sha256:ccc9cee10be880037914e572389be6dcae93947709a8a9ff01fb23f7dee254f2", size = 316610, upload-time = "2025-09-27T17:36:50.569Z" },
 ]
 
 [[package]]
@@ -2075,7 +2076,7 @@ docs = [
 requires-dist = [
     { name = "aio-pika", specifier = ">=9.5.5,<9.6.0" },
     { name = "aiohttp", specifier = ">=3.14.3,<3.15" },
-    { name = "beautifulsoup4", specifier = ">=4.12,<4.13" },
+    { name = "beautifulsoup4", specifier = ">=4.15,<4.16" },
     { name = "bleach", specifier = ">=6.4,<6.5" },
     { name = "cachetools", specifier = ">=6.0.0" },
     { name = "celery", specifier = ">=5.6,<5.7" },
@@ -2093,13 +2094,13 @@ requires-dist = [
     { name = "django-mptt", specifier = ">=0.18,<0.19" },
     { name = "django-nested-admin", specifier = ">=4.1,<4.2" },
     { name = "django-oauth-toolkit", specifier = ">=3.2,<3.3" },
-    { name = "django-otp", specifier = "==1.2.2" },
+    { name = "django-otp", specifier = ">=1.7.5,<1.8" },
     { name = "django-pagination-py3", specifier = ">=2.3,<2.4" },
     { name = "django-phonenumber-field", specifier = ">=8.4,<8.5" },
     { name = "django-registration-redux", specifier = ">=2.12,<2.13" },
     { name = "django-simple-captcha", specifier = ">=0.6.1,<0.7" },
     { name = "django-supervisor", git = "https://github.com/sio2project/django-supervisor" },
-    { name = "django-two-factor-auth", specifier = "==1.18.0" },
+    { name = "django-two-factor-auth", specifier = ">=1.18.1,<1.19" },
     { name = "djangorestframework", specifier = ">=3.18.2,<3.19" },
     { name = "dnslib", specifier = ">=0.9,<0.10" },
     { name = "drf-spectacular", specifier = ">=0.28.0" },
@@ -2110,7 +2111,7 @@ requires-dist = [
     { name = "legacy-cgi" },
     { name = "mistune", specifier = ">=3.3.4,<4" },
     { name = "pdfminer-six", specifier = "==20260107" },
-    { name = "phonenumbers", specifier = ">=8.13,<8.14" },
+    { name = "phonenumbers", specifier = ">=9.0.42,<10" },
     { name = "pika", specifier = ">=1.3,<1.4" },
     { name = "psycopg2-binary" },
     { name = "pygments", specifier = ">=2.20,<2.22" },
@@ -2192,11 +2193,11 @@ wheels = [
 
 [[package]]
 name = "phonenumbers"
-version = "8.13.55"
+version = "9.0.42"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6e/23/b4c886487ca212ca87768433a43e2b3099c1c2fa5d9e21d2fbce187cc3c2/phonenumbers-8.13.55.tar.gz", hash = "sha256:57c989dda3eabab1b5a9e3d24438a39ebd032fa0172bf68bfd90ab70b3d5e08b", size = 2296624, upload-time = "2025-02-15T08:06:03.465Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/e0/b6c30d6bb4255fc999f7fe3b7f7821dbe7a92272768f3b57b6939f4eedcf/phonenumbers-9.0.42.tar.gz", hash = "sha256:83ddc20edea93814f5bb2ee8d365b3ef64fa274c8a4f6d06bd8b2c7996030564", size = 2312652, upload-time = "2026-10-27T07:49:34.218Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/dc/a7f0a9d5ad8b98bc5406deb00207b268d6d2edd215c21642e8f2ecc6f0ce/phonenumbers-8.13.55-py2.py3-none-any.whl", hash = "sha256:25feaf46135f0fb1e61b69513dc97c477285ba98a69204bf5a8cf241a844a718", size = 2582306, upload-time = "2025-02-15T08:05:56.746Z" },
+    { url = "https://files.pythonhosted.org/packages/33/92/517a82af51c58601d3e9c2e5757587f1d8201143ce98ac62f262d47f3355/phonenumbers-9.0.42-py2.py3-none-any.whl", hash = "sha256:321c92d9734bfb4adc64575f940da26463f09fc79ac692b43a35f9306e4ecc7d", size = 2595813, upload-time = "2026-10-27T07:49:32.576Z" },
 ]
 
 [[package]]
