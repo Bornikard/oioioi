@@ -3,6 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
 from oioioi.contests.models import ProblemInstance
+from oioioi.llmdetect.generation import code_of_chat_answer
 from oioioi.llmdetect.models import LLMDetectConfig, ReviewDecision
 
 MAX_REFERENCE_SIZE = 256 * 1024
@@ -40,7 +41,12 @@ class ReferenceForm(forms.Form):
     model_name = forms.CharField(max_length=100, required=False, label=_("Model"))
     prompt_variant = forms.CharField(max_length=100, required=False, label=_("Prompt"))
     files = MultipleFileField(required=False, label=_("Files"))
-    code = forms.CharField(widget=forms.Textarea(attrs={"rows": 6, "class": "font-monospace"}), required=False, label=_("Or paste code"))
+    code = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 6, "class": "font-monospace"}),
+        required=False,
+        label=_("Or paste code"),
+        help_text=_("A whole chat answer can be pasted: only its code block is kept."),
+    )
 
     def __init__(self, *args, contest, **kwargs):
         super().__init__(*args, **kwargs)
@@ -53,9 +59,9 @@ class ReferenceForm(forms.Form):
         for file in cleaned.get("files") or []:
             if file.size > MAX_REFERENCE_SIZE:
                 raise forms.ValidationError(_("%(name)s is too large.") % {"name": file.name})
-            sources.append((file.name, file.read().decode("utf-8", "replace")))
+            sources.append((file.name, code_of_chat_answer(file.read().decode("utf-8", "replace"))))
         if cleaned.get("code", "").strip():
-            sources.append(("solution.cpp", cleaned["code"]))
+            sources.append(("solution.cpp", code_of_chat_answer(cleaned["code"])))
         if not sources:
             raise forms.ValidationError(_("Choose files or paste code."))
         cleaned["sources"] = sources

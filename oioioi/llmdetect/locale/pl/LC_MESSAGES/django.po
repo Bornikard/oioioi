@@ -456,6 +456,9 @@ msgstr "Pliki"
 msgid "Or paste code"
 msgstr "Albo wklej kod"
 
+msgid "A whole chat answer can be pasted: only its code block is kept."
+msgstr "Można wkleić całą odpowiedź z czatu: zostanie tylko blok kodu."
+
 msgid "Statement sent to the models"
 msgstr "Treść wysyłana do modeli"
 

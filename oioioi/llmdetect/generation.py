@@ -140,6 +140,13 @@ def extract_code(answer):
     return answer.strip() + "\n"
 
 
+def code_of_chat_answer(text):
+    """The code of a whole chat answer pasted by hand (prose and code
+    fences dropped); text without code fences is returned as it is.
+    """
+    return extract_code(text) if _CODE_BLOCK_RE.search(text) else text
+
+
 def _openai_compatible(config, model, prompt):
     url = config["base_url"].rstrip("/") + "/chat/completions"
     headers = {"Content-Type": "application/json"}

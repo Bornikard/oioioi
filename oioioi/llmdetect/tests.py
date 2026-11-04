@@ -466,6 +466,17 @@ class TestViews(LLMDetectTestCase):
         self.client.post(self._url("llmdetect_delete_reference", reference_id=reference.id))
         self.assertEqual(LLMReferenceSolution.objects.count(), 1)
 
+    def test_chat_answers_added_by_hand_keep_only_the_code(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        url = self._url("llmdetect_references")
+        answer = "Here is the solution:\n\n```cpp\n" + LLM_BFS + "```\n\nExplanation: we run BFS from vertex 1.\n"
+        self.client.post(url, {"problem_instance": self.pis[1].id, "code": answer})
+        self.client.post(url, {"problem_instance": self.pis[1].id, "files": [ContentFile(answer.encode(), name="chat.txt")]})
+        self.client.post(url, {"problem_instance": self.pis[1].id, "code": HUMAN_BFS})
+        sources = list(LLMReferenceSolution.objects.order_by("id").values_list("source", flat=True))
+        # Plain code is kept as it is (the form only trims surrounding whitespace).
+        self.assertEqual(sources, [LLM_BFS, LLM_BFS, HUMAN_BFS.strip()])
+
     def test_settings(self):
         self.assertTrue(self.client.login(username="test_admin"))
         self.client.post(self._url("llmdetect_settings"), {"trusted_rounds": [self.rounds[0].id]})
@@ -480,9 +491,12 @@ class TestCommands(LLMDetectTestCase):
             os.makedirs(os.path.join(root, "nope"))
             with open(os.path.join(root, "ddd", "gpt__short__1.cpp"), "w") as file:
                 file.write(LLM_BFS)
+            with open(os.path.join(root, "ddd", "gemini__plain__1.txt"), "w") as file:
+                file.write("Sure! ```cpp\n" + HUMAN_BFS + "``` This reads the graph.")
             call_command("llmdetect_import_references", "camp", root, stdout=StringIO(), stderr=StringIO())
-        reference = LLMReferenceSolution.objects.get()
-        self.assertEqual((reference.model_name, reference.prompt_variant), ("gpt", "short"))
+        reference = LLMReferenceSolution.objects.get(model_name="gpt")
+        self.assertEqual((reference.prompt_variant, reference.source), ("short", LLM_BFS))
+        self.assertEqual(LLMReferenceSolution.objects.get(model_name="gemini").source, HUMAN_BFS)
 
         call_command("llmdetect_update", "camp", stdout=StringIO())
         self.assertTrue(RiskAssessment.objects.exists())

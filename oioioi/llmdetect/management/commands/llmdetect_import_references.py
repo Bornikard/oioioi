@@ -3,13 +3,15 @@ import os
 from django.core.management.base import BaseCommand, CommandError
 
 from oioioi.contests.models import Contest, ProblemInstance
+from oioioi.llmdetect.generation import code_of_chat_answer
 from oioioi.llmdetect.models import LLMReferenceSolution, mark_dirty
 
 
 class Command(BaseCommand):
     help = (
         "Imports LLM reference solutions from DIR/<problem short name>/<file>. A file named "
-        "<model>__<prompt>__<anything>.<ext> gets the model and the prompt from its name."
+        "<model>__<prompt>__<anything>.<ext> gets the model and the prompt from its name. Of a file that is a whole chat answer "
+        "(with ``` code fences), only the code is kept."
     )
 
     def add_arguments(self, parser):
@@ -41,7 +43,7 @@ class Command(BaseCommand):
                 if not os.path.isfile(file_path):
                     continue
                 with open(file_path, encoding="utf-8", errors="replace") as file:
-                    source = file.read()
+                    source = code_of_chat_answer(file.read())
                 parts = os.path.splitext(filename)[0].split("__")
                 LLMReferenceSolution.objects.create(
                     problem_instance=pi,

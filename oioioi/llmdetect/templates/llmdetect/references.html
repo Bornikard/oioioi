@@ -90,7 +90,7 @@
     <div class="col-md-3">{{ form.model_name.label_tag }} {{ form.model_name }}</div>
     <div class="col-md-3">{{ form.prompt_variant.label_tag }} {{ form.prompt_variant }}</div>
     <div class="col-md-3">{{ form.files.label_tag }} {{ form.files }}</div>
-    <div class="col-12">{{ form.code.label_tag }} {{ form.code }}</div>
+    <div class="col-12">{{ form.code.label_tag }} {{ form.code }}<div class="form-text">{{ form.code.help_text }}</div></div>
     <div class="col-12"><button type="submit" class="btn btn-primary">{% trans "Add" %}</button></div>
 </form>
 
