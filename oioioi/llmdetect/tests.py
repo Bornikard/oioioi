@@ -33,9 +33,10 @@ from oioioi.llmdetect.models import (
     ReviewDecision,
     RiskAssessment,
     SubmissionFeatures,
+    get_config,
 )
 from oioioi.llmdetect.prompts import PROMPTS, PROMPTS_FORMAT, build_prompt, extract_code, parse_references
-from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, compute_features, needs_update, read_source, user_rankings
+from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, compute_features, history_submissions, needs_update, read_source, user_rankings
 from oioioi.problems.models import Problem
 from oioioi.programs.models import ProgramSubmission
 
@@ -845,7 +846,7 @@ class TestPanelExplainsEmptyQueue(LLMDetectTestCase):
         self._submit(self.humans[0], self.pis[0], HUMAN_BFS, minutes=10)
         self._submit(self.admin, self.pis[0], HUMAN_BFS, minutes=10)
         response = self.client.get(self.url)
-        self.assertEqual(response.context["summary"], {"total": 2, "counted": 1, "staff": 1, "analysed": 1})
+        self.assertEqual(response.context["summary"], {"total": 2, "counted": 1, "staff": 1, "analysed": 1, "history": 0})
         self.assertContains(response, "Analysed 1 of 1 submissions by participants.")
         self.assertContains(response, "1 submissions by staff")
 
@@ -944,3 +945,111 @@ class TestLineEndingsOfOldSubmissions(LLMDetectTestCase):
         migration.mark_backfilled(apps, None)
         known = dict(SubmissionFeatures.objects.values_list("submission_id", "paste_known"))
         self.assertEqual(known, {sent_and_judged.id: True, backfilled.id: False, pasted.id: True})
+
+
+class TestHistoryContests(LLMDetectTestCase):
+    """Submissions of the same participants in earlier contests (camps)."""
+
+    def setUp(self):
+        super().setUp()
+        self.old = Contest.objects.create(id="old", name="Old camp", controller_name="oioioi.programs.controllers.ProgrammingContestController")
+        start = T0 - timedelta(days=90)
+        self.old_rounds = [
+            Round.objects.create(contest=self.old, name=f"Day {day}", start_date=start + timedelta(days=day), end_date=start + timedelta(days=day, hours=5))
+            for day in range(3)
+        ]
+        self.old_pis = [self._old_problem(round, name) for round, name in zip(self.old_rounds, ["xxx", "yyy", "zzz"], strict=True)]
+        self.config = get_config(self.contest)
+
+    def _old_problem(self, round, short_name, problem=None):
+        if problem is None:
+            controller = "oioioi.programs.controllers.ProgrammingProblemController"
+            problem = Problem.objects.create(legacy_name=short_name, short_name=short_name, controller_name=controller)
+        return ProblemInstance.objects.create(problem=problem, round=round, contest=self.old, short_name=short_name)
+
+    def _first_day_with_cheater(self):
+        """Everybody wrote their own code at the earlier camp; this camp has
+        only had its first day, on which the cheater pastes an LLM solution.
+        """
+        for i, user in enumerate(self.humans + [self.cheater]):
+            for day, pi in enumerate(self.old_pis):
+                self._submit(user, pi, human_code(f"{i}-old-{day}"), minutes=90 + 7 * i)
+        for i, user in enumerate(self.humans):
+            self._submit(user, self.pis[0], human_code(f"{i}-0"), minutes=100 + 9 * i)
+        return self._submit(self.cheater, self.pis[0], LLM_BFS, minutes=95)
+
+    def test_habits_known_from_an_earlier_contest(self):
+        submission = self._first_day_with_cheater()
+        assess_contest(self.contest)
+        # On the first day nobody has a history in this contest.
+        alone = RiskAssessment.objects.get(submission=submission)
+        self.assertNotIn("habit_break", alone.signals)
+        self.config.history_contests.add(self.old)
+        assess_contest(self.contest)
+        assessment = RiskAssessment.objects.get(submission=submission)
+        broken = {row["habit"] for row in assessment.signals["habit_break"]["detail"]["broken"]}
+        self.assertTrue({"includes", "namespace", "ll_alias"} <= broken)
+        self.assertGreater(assessment.risk, alone.risk)
+        profile = assessment.context["profile"]
+        self.assertAlmostEqual(profile["history"], 3 * self.config.history_weight, places=3)
+        self.assertEqual(profile["weight"], profile["history"])
+        self.assertTrue(self.client.login(username="test_admin"))
+        page = self.client.get(reverse("llmdetect_user", kwargs={"contest_id": self.contest.id, "user_id": self.cheater.id}))
+        self.assertContains(page, "1.5 from earlier contests")
+        # Earlier submissions are only part of profiles: not analysed again.
+        self.assertFalse(RiskAssessment.objects.filter(submission__problem_instance__contest=self.old).exists())
+        others = RiskAssessment.objects.filter(contest=self.contest).exclude(submission=submission)
+        self.assertFalse([a for a in others if "habit_break" in a.signals])
+
+    def test_weight(self):
+        self._first_day_with_cheater()
+        self.config.history_contests.add(self.old)
+        self.config.history_weight = 0.2
+        self.config.save()
+        assess_contest(self.contest)
+        assessment = RiskAssessment.objects.filter(contest=self.contest).first()
+        self.assertAlmostEqual(assessment.context["profile"]["history"], 0.6, places=3)
+
+    def test_same_problem_in_an_earlier_contest_is_left_out(self):
+        again = self._old_problem(self.old_rounds[0], "aaa", problem=self.pis[0].problem)
+        submission = self._submit(self.humans[0], self.pis[0], HUMAN_BFS, minutes=10)
+        self._submit(self.humans[0], again, HUMAN_BFS, minutes=10)
+        self.config.history_contests.add(self.old)
+        assess_contest(self.contest)
+        self.assertEqual(RiskAssessment.objects.get(submission=submission).context["profile"]["history"], 0)
+
+    def test_only_participants_of_this_contest(self):
+        stranger = User.objects.create_user("stranger")
+        self._submit(stranger, self.old_pis[0], HUMAN_BFS, minutes=10)
+        self._submit(self.humans[0], self.old_pis[0], HUMAN_BFS, minutes=10)
+        self._submit(self.humans[0], self.pis[0], HUMAN_BFS, minutes=10)
+        self.config.history_contests.add(self.old)
+        self.assertEqual([s.user for s in history_submissions(self.contest, [self.humans[0].id])], [self.humans[0]])
+        # The summary counts those of the participants of this contest only.
+        self.assertTrue(self.client.login(username="test_admin"))
+        response = self.client.get(reverse("llmdetect_panel", kwargs={"contest_id": self.contest.id}))
+        self.assertEqual(response.context["summary"]["history"], 1)
+        self.assertContains(response, "Profiles also use 1 submissions of these participants from earlier contests.")
+
+    def test_settings_list_only_administered_contests(self):
+        secret = Contest.objects.create(id="secret", name="Secret", controller_name="oioioi.programs.controllers.ProgrammingContestController")
+        admin = self.humans[6]
+        for contest in (self.contest, self.old):
+            ContestPermission.objects.create(user=admin, contest=contest, permission="contests.contest_admin")
+        # Chosen earlier by an admin of both.
+        self.config.history_contests.add(secret)
+        self.assertTrue(self.client.login(username=admin.username))
+        url = reverse("llmdetect_settings", kwargs={"contest_id": self.contest.id})
+        form = self.client.get(reverse("llmdetect_panel", kwargs={"contest_id": self.contest.id})).context["settings_form"]
+        self.assertEqual(list(form.fields["history_contests"].queryset), [self.old])
+        self.assertEqual(form.hidden_history, [secret])
+        # Contests the admin cannot see cannot be chosen...
+        self.client.post(url, {"history_contests": [secret.id], "history_weight": "0.3"})
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.history_weight, 0.5)
+        # ...nor removed.
+        self.client.post(url, {"history_contests": [self.old.id], "history_weight": "0.3"})
+        self.config.refresh_from_db()
+        self.assertEqual(set(self.config.history_contests.all()), {self.old, secret})
+        self.assertEqual(self.config.history_weight, 0.3)
+        self.assertTrue(self.config.dirty)

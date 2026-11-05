@@ -26,6 +26,7 @@ from oioioi.llmdetect.scoring import (
     SUBMISSION_KINDS,
     assess_contest,
     contest_submissions,
+    history_submissions,
     read_source,
     update_if_needed,
     user_rankings,
@@ -88,7 +89,7 @@ def panel_view(request):
         "config": config,
         "rows": rows,
         "problems": problems,
-        "settings_form": SettingsForm(instance=config, contest=contest),
+        "settings_form": SettingsForm(instance=config, contest=contest, user=request.user),
         "threshold": FLAG_THRESHOLD,
         "low_confidence": LOW_CONFIDENCE,
         "middleware_enabled": "oioioi.llmdetect.middleware.ProblemViewMiddleware" in settings.MIDDLEWARE,
@@ -102,11 +103,13 @@ def _summary(contest):
     program = ProgramSubmission.objects.filter(problem_instance__contest=contest, kind__in=SUBMISSION_KINDS, user__isnull=False)
     total = program.count()
     counted = contest_submissions(contest).count()
+    users = contest_submissions(contest).order_by().values("user_id").distinct()
     return {
         "total": total,
         "counted": counted,
         "staff": total - counted,
         "analysed": RiskAssessment.objects.filter(contest=contest).count(),
+        "history": history_submissions(contest, users).count(),
     }
 
 
@@ -122,7 +125,7 @@ def recompute_view(request):
 @enforce_condition(contest_exists & is_contest_admin)
 def settings_view(request):
     config = get_config(request.contest)
-    form = SettingsForm(request.POST, instance=config, contest=request.contest)
+    form = SettingsForm(request.POST, instance=config, contest=request.contest, user=request.user)
     if form.is_valid():
         form.save()
         mark_dirty(request.contest)

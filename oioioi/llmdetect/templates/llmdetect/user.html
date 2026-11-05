@@ -60,7 +60,7 @@
     </div>
     <div class="col-lg-5 small">
         <p>
-            {% trans "Style profile" %}: {{ profile.weight|floatformat:1 }} {% trans "submissions on other problems" %},
+            {% trans "Style profile" %}: {{ profile.weight|floatformat:1 }} {% trans "submissions on other problems" %}{% if profile.history %} ({% blocktrans with history=profile.history|floatformat:1 %}{{ history }} from earlier contests{% endblocktrans %}){% endif %},
             {% trans "confidence" %} {{ profile.confidence|percent }}{% if profile.confidence < low_confidence %} <span class="badge text-bg-light border">{% trans "profile uncertain" %}</span>{% endif %}.
             {% trans "Usual LLM-likeness" %}: {{ profile.style|percent }}.
         </p>

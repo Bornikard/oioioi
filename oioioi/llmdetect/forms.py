@@ -1,7 +1,7 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from oioioi.contests.models import ProblemInstance
+from oioioi.contests.models import Contest, ProblemInstance
 from oioioi.llmdetect.models import LLMDetectConfig, ReviewDecision
 from oioioi.llmdetect.prompts import PROMPTS, code_of_chat_answer
 
@@ -24,15 +24,41 @@ class MultipleFileField(forms.FileField):
         return [single(data, initial)] if data else []
 
 
+def administered_contests(user, exclude):
+    """Contests other than ``exclude`` whose LLM detection ``user`` may see:
+    the profiles of a contest show code from its history contests.
+    """
+    contests = Contest.objects.exclude(id=exclude.id).order_by("-creation_date")
+    if user.is_superuser:
+        return contests
+    return contests.filter(id__in=[contest.id for contest in contests if user.has_perm("contests.contest_admin", contest)])
+
+
 class SettingsForm(forms.ModelForm):
     class Meta:
         model = LLMDetectConfig
-        fields = ["trusted_rounds"]
-        widgets = {"trusted_rounds": forms.CheckboxSelectMultiple}
+        fields = ["trusted_rounds", "history_contests", "history_weight"]
+        widgets = {"trusted_rounds": forms.CheckboxSelectMultiple, "history_contests": forms.CheckboxSelectMultiple}
 
-    def __init__(self, *args, contest, **kwargs):
+    def __init__(self, *args, contest, user, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["trusted_rounds"].queryset = contest.round_set.order_by("start_date")
+        allowed = administered_contests(user, contest)
+        self.fields["history_contests"].queryset = allowed
+        self.fields["history_contests"].label_from_instance = lambda c: c.name
+        self.fields["history_weight"].required = False
+        # Chosen by another admin in contests this one cannot see: kept as they are.
+        self.hidden_history = list(self.instance.history_contests.exclude(id__in=allowed.values("id"))) if self.instance.pk else []
+
+    def clean_history_weight(self):
+        weight = self.cleaned_data.get("history_weight")
+        return self.instance.history_weight if weight is None else weight
+
+    def save(self, commit=True):
+        config = super().save(commit=commit)
+        if commit and self.hidden_history:
+            config.history_contests.add(*self.hidden_history)
+        return config
 
 
 class ReferenceForm(forms.Form):

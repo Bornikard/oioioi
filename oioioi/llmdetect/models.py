@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -15,6 +16,22 @@ class LLMDetectConfig(models.Model):
         blank=True,
         verbose_name=_("supervised rounds"),
         help_text=_("Rounds written under supervision without internet. Their submissions anchor each participant's style."),
+    )
+    history_contests = models.ManyToManyField(
+        Contest,
+        blank=True,
+        related_name="+",
+        verbose_name=_("earlier contests"),
+        help_text=_(
+            "Submissions of the same participants in these contests are added to their style profiles (they are not analysed again). "
+            "Only contests you administer are listed."
+        ),
+    )
+    history_weight = models.FloatField(
+        default=0.5,
+        validators=[MinValueValidator(0.05), MaxValueValidator(1.0)],
+        verbose_name=_("weight of earlier contests"),
+        help_text=_("Weight of a submission from an earlier contest in a profile, compared with one from this contest written on the same day (1)."),
     )
     computed_at = models.DateTimeField(null=True, blank=True)
     # The newest submission included in the last computation.

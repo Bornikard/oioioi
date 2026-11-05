@@ -28,6 +28,7 @@
 <p class="small mb-1">
     {% blocktrans with analysed=summary.analysed counted=summary.counted %}Analysed {{ analysed }} of {{ counted }} submissions by participants.{% endblocktrans %}
     {% if summary.staff %}{% blocktrans with staff=summary.staff %}{{ staff }} submissions by staff (superusers and users with a permission in this contest) are not analysed.{% endblocktrans %}{% endif %}
+    {% if summary.history %}{% blocktrans with history=summary.history %}Profiles also use {{ history }} submissions of these participants from earlier contests.{% endblocktrans %}{% endif %}
 </p>
 {% if summary.total == 0 %}
 <div class="alert alert-secondary small">{% trans "This contest has no program submissions." %}</div>
@@ -100,6 +101,13 @@
             <label class="form-label">{{ settings_form.trusted_rounds.label }}</label>
             <div class="small">{{ settings_form.trusted_rounds }}</div>
             <div class="form-text mb-2">{{ settings_form.trusted_rounds.help_text }}</div>
+            <label class="form-label">{{ settings_form.history_contests.label }}</label>
+            <div class="small" style="max-height: 12em; overflow-y: auto;">{{ settings_form.history_contests }}</div>
+            {% if settings_form.hidden_history %}<div class="form-text">{% blocktrans count counter=settings_form.hidden_history|length %}And {{ counter }} contest chosen by another admin, which you do not administer.{% plural %}And {{ counter }} contests chosen by another admin, which you do not administer.{% endblocktrans %}</div>{% endif %}
+            <div class="form-text mb-2">{{ settings_form.history_contests.help_text }}</div>
+            <label class="form-label" for="{{ settings_form.history_weight.id_for_label }}">{{ settings_form.history_weight.label }}</label>
+            <input type="number" class="form-control form-control-sm" style="max-width: 8em;" name="{{ settings_form.history_weight.html_name }}" id="{{ settings_form.history_weight.id_for_label }}" value="{{ settings_form.history_weight.value }}" min="0.05" max="1" step="0.05">
+            <div class="form-text mb-2">{{ settings_form.history_weight.help_text }}</div>
             <button type="submit" class="btn btn-sm btn-primary">{% trans "Save" %}</button>
         </form>
     </div>
