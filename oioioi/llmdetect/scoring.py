@@ -10,6 +10,7 @@ Each signal is a number in [0, 1] with the facts behind it; the risk is
 it and the staff sees how much each one did.
 """
 
+import contextlib
 import logging
 import math
 import statistics
@@ -124,9 +125,9 @@ def sigmoid(x):
 
 def read_source(submission):
     """The code of a submission, read the way SIO2 itself reads it."""
-    try:
-        data = submission.source_file.read()
-    finally:
+    data = submission.source_file.read()
+    # Filetracker's stream has no close(); local storages do.
+    with contextlib.suppress(AttributeError):
         submission.source_file.close()
     return data.decode("utf-8", "replace") if isinstance(data, bytes) else data
 

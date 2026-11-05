@@ -11,7 +11,7 @@ from unittest import TestCase as SimpleTestCase
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
-from django.core.files.base import ContentFile
+from django.core.files.base import ContentFile, File
 from django.core.management import call_command
 from django.http import HttpResponse
 from django.test import RequestFactory
@@ -35,7 +35,7 @@ from oioioi.llmdetect.models import (
     SubmissionFeatures,
 )
 from oioioi.llmdetect.prompts import PROMPTS, PROMPTS_FORMAT, build_prompt, extract_code, parse_references
-from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, compute_features, needs_update, user_rankings
+from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, compute_features, needs_update, read_source, user_rankings
 from oioioi.problems.models import Problem
 from oioioi.programs.models import ProgramSubmission
 
@@ -865,6 +865,26 @@ class TestPanelExplainsEmptyQueue(LLMDetectTestCase):
         response = self.client.get(self.url)
         self.assertNotContains(response, "could not be analysed")
         self.assertEqual(len(response.context["rows"]), 1)
+
+
+class _StreamWithoutClose:
+    """Like filetracker's ``_FileLikeFromResponse``: it can only be read."""
+
+    def __init__(self, data):
+        self.data = data
+
+    def read(self, size=None):
+        data, self.data = self.data, b""
+        return data
+
+
+class TestFiletrackerSources(LLMDetectTestCase):
+    def test_source_without_close_is_read(self):
+        submission = self._submit(self.humans[0], self.pis[0], HUMAN_BFS, minutes=10)
+        submission = ProgramSubmission.objects.get(id=submission.id)
+        # As FiletrackerStorage._open returns it.
+        submission.source_file.file = File(_StreamWithoutClose(HUMAN_BFS.encode()), submission.source_file.name)
+        self.assertEqual(read_source(submission), HUMAN_BFS)
 
 
 class TestLineEndingsOfOldSubmissions(LLMDetectTestCase):
