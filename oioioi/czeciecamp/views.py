@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
@@ -17,7 +18,7 @@ from oioioi.base.admin import system_admin_menu_registry
 from oioioi.base.permissions import enforce_condition, is_superuser, make_request_condition
 from oioioi.contests.menu import contest_admin_menu_registry
 from oioioi.contests.models import Contest, ProblemInstance, Round
-from oioioi.contests.utils import contest_exists, is_contest_basicadmin
+from oioioi.contests.utils import contest_exists, is_contest_admin, is_contest_basicadmin
 from oioioi.czeciecamp.controllers import CzecieCampContestController, get_freeze_date, get_last_round_end, is_frozen
 from oioioi.czeciecamp.forms import AddParticipantsForm, CampSettingsForm, CreateCampForm, FreezeDateForm, RankingForm, RoundForm
 from oioioi.czeciecamp.models import (
@@ -185,6 +186,7 @@ def panel_view(request):
     now = request.timestamp
     context = {
         "config": config,
+        "llmdetect_enabled": "oioioi.llmdetect" in settings.INSTALLED_APPS and is_contest_admin(request),
         "settings_form": settings_form,
         "participants_form": participants_form,
         "participants": Participant.objects.filter(contest=contest).select_related("user").order_by("user__last_name", "user__first_name"),

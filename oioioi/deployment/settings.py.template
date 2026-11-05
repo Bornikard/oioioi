@@ -159,6 +159,7 @@ MIDDLEWARE += (
    # 'oioioi.ipdnsauth.middleware.IpDnsAuthMiddleware',
    'oioioi.contestexcl.middleware.ExclusiveContestsMiddleware',
    # 'oioioi.ipdnsauth.middleware.ForceDnsIpAuthMiddleware',
+   # 'oioioi.llmdetect.middleware.ProblemViewMiddleware',
 )
 
 # EXTRA MODULES
@@ -205,6 +206,7 @@ INSTALLED_APPS = (
     'oioioi.testspackages',
     # 'oioioi.pa',
     # 'oioioi.czeciecamp',
+    # 'oioioi.llmdetect',
     # 'oioioi.notifications',
     # 'oioioi.mailsubmit',
     # 'oioioi.portals',
