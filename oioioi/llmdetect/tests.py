@@ -448,19 +448,42 @@ class TestViews(LLMDetectTestCase):
         self.assertContains(response, "numVertices")  # the submission and the reference
         self.assertIsNotNone(response.context["typical_source"])
 
-    def test_submissions_link_to_their_code(self):
+    def test_submission_links(self):
         submission = self._camp()
         self.assertTrue(self.client.login(username="test_admin"))
         code_url = reverse("submission", kwargs={"contest_id": self.contest.id, "submission_id": submission.id})
         analysis_url = self._url("llmdetect_user", user_id=self.cheater.id) + f"?submission={submission.id}"
+        # The queue leads to the analysis...
         panel = self.client.get(self._url("llmdetect_panel"))
-        self.assertContains(panel, f'href="{code_url}"')
-        self.assertNotContains(panel, analysis_url)
-        page = self.client.get(self._url("llmdetect_user", user_id=self.cheater.id))
+        self.assertContains(panel, f'href="{analysis_url}"')
+        # ...which is above the list of submissions, whose numbers open the code.
+        page = self.client.get(analysis_url)
+        content = page.content.decode()
+        self.assertLess(content.index("Nearest LLM reference"), content.index('<h2 class="h4 mt-4">Submissions</h2>'))
         self.assertContains(page, f'<a href="{code_url}" title="open the submission">#{submission.id}</a>', html=True)
-        # The problem name still shows the analysis of the submission.
-        self.assertContains(page, f'href="{analysis_url}"')
         self.assertEqual(self.client.get(code_url).status_code, 200)
+
+    def test_disqualify_button(self):
+        from oioioi.disqualification.models import Disqualification
+
+        submission = self._camp()
+        self.assertTrue(self.client.login(username="test_admin"))
+        url = self._url("llmdetect_user", user_id=self.cheater.id) + f"?submission={submission.id}"
+        page = self.client.get(url)
+        self.assertContains(page, "Disqualify this submission")
+        form_url = page.context["disqualify_url"]
+        self.assertIn(f"submission={submission.id}", form_url)
+        self.assertIn(f"user={self.cheater.id}", form_url)
+        self.assertTrue(form_url.startswith(f"/c/{self.contest.id}/admin/"), form_url)
+        form = self.client.get(form_url)
+        self.assertEqual(form.status_code, 200)
+        initial = form.context["adminform"].form.initial
+        self.assertEqual(str(initial["submission"]), str(submission.id))
+        self.assertIn(f"#{submission.id}", initial["content"])
+        Disqualification.objects.create(contest=self.contest, user=self.cheater, submission=submission, title="LLM", content="Generated.")
+        page = self.client.get(url)
+        self.assertNotContains(page, "Disqualify this submission")
+        self.assertTrue(page.context["selected_disqualified"])
 
     def test_confirmed_decision_becomes_reference(self):
         submission = self._camp()

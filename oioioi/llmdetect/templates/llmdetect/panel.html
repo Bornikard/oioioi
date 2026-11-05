@@ -67,7 +67,7 @@
             <td class="text-nowrap"><strong>{{ row.score|floatformat:2 }}</strong>{% if row.flagged %} <span class="badge text-bg-danger">{{ row.flagged }}</span>{% endif %}</td>
             <td class="text-nowrap">
                 {% for a in row.top %}
-                    <a href="{% url 'submission' contest_id=contest.id submission_id=a.submission_id %}" class="badge text-bg-{{ a.risk|risk_class }} text-decoration-none" title="#{{ a.submission_id }}: {% trans 'open the submission' %}">{{ a.submission.problem_instance.short_name }} {{ a.risk|percent }}</a>
+                    <a href="{{ row.url }}?submission={{ a.submission_id }}" class="badge text-bg-{{ a.risk|risk_class }} text-decoration-none" title="{{ a.submission.problem_instance.short_name }}">{{ a.submission.problem_instance.short_name }} {{ a.risk|percent }}</a>
                 {% endfor %}
             </td>
             <td class="small">{{ row.signals|join:", " }}</td>

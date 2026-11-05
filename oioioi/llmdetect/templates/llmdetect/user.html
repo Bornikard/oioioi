@@ -15,35 +15,21 @@
 <p><a href="{% url 'llmdetect_panel' contest_id=contest.id %}">← {% trans "Review queue" %}</a></p>
 <h1>{{ profile_user.get_full_name|default:profile_user.username }} <small class="text-muted fs-6">{{ profile_user.username }}</small></h1>
 
-<h2 class="h4 mt-3">{% trans "Submissions" %}</h2>
-<div class="table-responsive">
-<table class="table table-sm align-middle">
-    <thead><tr><th>#</th><th>{% trans "Problem" %}</th><th>{% trans "Date" %}</th><th>{% trans "Score" %}</th><th>{% trans "Risk" %}</th><th>{% trans "Signals" %}</th></tr></thead>
-    <tbody>
-    {% for row in rows %}
-        {% with a=row.assessment %}
-        <tr{% if selected and a.id == selected.id %} class="table-active"{% endif %}>
-            <td class="small"><a href="{% url 'submission' contest_id=contest.id submission_id=a.submission_id %}" title="{% trans 'open the submission' %}">#{{ a.submission_id }}</a></td>
-            <td><a href="{{ row.url }}" title="{% trans 'show the analysis' %}">{{ a.submission.problem_instance.short_name }}</a>{% if a.context.trusted %} <span class="badge text-bg-light border">{% trans "supervised" %}</span>{% endif %}{% if not a.context.during_round %} <span class="badge text-bg-light border" title="{% trans 'Sent after the round; timing, score and similarity to other participants are not counted.' %}">{% trans "after round" %}</span>{% endif %}</td>
-            <td class="text-nowrap small">{{ a.submission.date|date:"d.m H:i" }}</td>
-            <td class="small">{{ a.submission.get_score_display|default:"" }}</td>
-            <td><span class="badge text-bg-{{ a.risk|risk_class }}">{{ a.risk|percent }}</span></td>
-            <td class="small">{% for s in row.signals|slice:":3" %}{% if s.contribution > 0.2 %}{{ s.label }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}</td>
-        </tr>
-        {% endwith %}
-    {% empty %}
-        <tr><td colspan="6" class="text-muted">{% trans "No submissions." %}</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
-</div>
-
 {% if selected %}
-<h2 class="h4 mt-4">
+<div class="d-flex flex-wrap align-items-center gap-2 mt-3 mb-2">
+<h2 class="h4 mb-0">
     {% trans "Submission" %} <a href="{% url 'submission' contest_id=contest.id submission_id=selected.submission_id %}">#{{ selected.submission_id }}</a>
     ({{ selected.submission.problem_instance.short_name }}) –
     <span class="badge text-bg-{{ selected.risk|risk_class }}">{{ selected.risk|percent }}</span>
 </h2>
+{% if disqualification_enabled %}
+    {% if selected_disqualified %}
+    <span class="badge text-bg-danger">{% trans "disqualified" %}</span>
+    {% else %}
+    <a class="btn btn-sm btn-outline-danger" href="{{ disqualify_url }}" title="{% trans 'Opens the disqualification form filled in for this submission; the participant will see its title and content.' %}">{% trans "Disqualify this submission" %}</a>
+    {% endif %}
+{% endif %}
+</div>
 
 <div class="row">
     <div class="col-lg-7">
@@ -111,6 +97,29 @@
     </div>
 </div>
 {% endif %}
+
+<h2 class="h4 mt-4">{% trans "Submissions" %}</h2>
+<div class="table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr><th>#</th><th>{% trans "Problem" %}</th><th>{% trans "Date" %}</th><th>{% trans "Score" %}</th><th>{% trans "Risk" %}</th><th>{% trans "Signals" %}</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+        {% with a=row.assessment %}
+        <tr{% if selected and a.id == selected.id %} class="table-active"{% endif %}>
+            <td class="small"><a href="{% url 'submission' contest_id=contest.id submission_id=a.submission_id %}" title="{% trans 'open the submission' %}">#{{ a.submission_id }}</a></td>
+            <td><a href="{{ row.url }}" title="{% trans 'show the analysis' %}">{{ a.submission.problem_instance.short_name }}</a>{% if a.context.trusted %} <span class="badge text-bg-light border">{% trans "supervised" %}</span>{% endif %}{% if not a.context.during_round %} <span class="badge text-bg-light border" title="{% trans 'Sent after the round; timing, score and similarity to other participants are not counted.' %}">{% trans "after round" %}</span>{% endif %}</td>
+            <td class="text-nowrap small">{{ a.submission.date|date:"d.m H:i" }}</td>
+            <td class="small">{{ a.submission.get_score_display|default:"" }}</td>
+            <td><span class="badge text-bg-{{ a.risk|risk_class }}">{{ a.risk|percent }}</span></td>
+            <td class="small">{% for s in row.signals|slice:":3" %}{% if s.contribution > 0.2 %}{{ s.label }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}</td>
+        </tr>
+        {% endwith %}
+    {% empty %}
+        <tr><td colspan="6" class="text-muted">{% trans "No submissions." %}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
 
 <h2 class="h4 mt-4">{% trans "Decisions" %}</h2>
 <ul>

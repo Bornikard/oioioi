@@ -1,5 +1,6 @@
 import os
 from collections import Counter
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -335,7 +336,30 @@ def user_view(request, user_id):
     }
     if selected is not None:
         context.update(_comparison(contest, user, selected, assessments, users))
+        if context["disqualification_enabled"]:
+            context.update(_disqualification(selected))
     return TemplateResponse(request, "llmdetect/user.html", context)
+
+
+def _disqualification(selected):
+    """Whether the selected submission is disqualified, and a link to the
+    disqualification form filled in for it otherwise.
+    """
+    from oioioi.disqualification.models import Disqualification
+
+    submission = selected.submission
+    if Disqualification.objects.filter(submission=submission, guilty=True).exists():
+        return {"selected_disqualified": True}
+    params = urlencode(
+        {
+            "user": submission.user_id,
+            "submission": submission.id,
+            "title": _("Solution not written by yourself"),
+            "content": _("Submission #%(id)s (%(problem)s) was not written by you, so the problem counts 0.")
+            % {"id": submission.id, "problem": submission.problem_instance.short_name},
+        }
+    )
+    return {"disqualify_url": f"{reverse('oioioiadmin:disqualification_disqualification_add')}?{params}"}
 
 
 def _comparison(contest, user, selected, assessments, users):
