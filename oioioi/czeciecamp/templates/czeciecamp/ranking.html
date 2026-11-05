@@ -35,14 +35,15 @@
             </thead>
             <tbody>
                 {% for row in rows %}
-                    <tr id="ranking_row_{{ row.user.id }}"{% if row.medal %} class="camp-medal-{{ row.medal }}"{% elif row.hidden %} class="camp-hidden-row" title="{% trans 'Hidden in rankings, only admins see this row.' %}"{% endif %}>
+                    <tr id="ranking_row_{{ row.user.id }}"{% if row.medal %} class="camp-medal-{{ row.medal }}"{% elif row.disqualified %} class="camp-hidden-row" title="{% trans 'Disqualified, only admins see this row.' %}"{% elif row.hidden %} class="camp-hidden-row" title="{% trans 'Hidden in rankings, only admins see this row.' %}"{% endif %}>
                         <td class="text-end">{{ row.place|default_if_none:"–" }}</td>
-                        <td class="user-cell">{% public_name row.user %}</td>
+                        <td class="user-cell">{% public_name row.user %}{% if row.disqualified %} <span class="badge text-bg-danger">{% trans "disqualified" %}</span>{% endif %}</td>
                         {% if show_sum %}<td class="text-end sum-cell"><strong>{{ row.sum }}</strong></td>{% endif %}
                         {% if show_percentage %}<td class="text-end text-muted">{{ row.percentage|floatformat:2 }}</td>{% endif %}
                         {% if show_difference %}<td class="text-end text-muted">{% if row.diff %}{{ row.diff }}{% endif %}</td>{% endif %}
                         {% for cell in row.cells %}
-                            <td class="text-end">
+                            <td class="text-end"{% if is_admin and cell.disqualified %} title="{% trans 'A submission to this problem is disqualified; the problem counts 0.' %}"{% endif %}>
+                                {% if is_admin and cell.disqualified %}<span class="badge text-bg-danger">DQ</span>{% endif %}
                                 {% if is_admin and cell.url %}<a href="{{ cell.url }}">{% endif %}
                                 {% if is_main %}
                                     {% if cell.daily is not None or cell.stale is not None %}

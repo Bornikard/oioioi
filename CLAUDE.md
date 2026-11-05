@@ -63,7 +63,7 @@ After model changes: `python manage.py makemigrations <app>` (in `/sio2/deployme
 
 **Rankings** are computed asynchronously by the `rankingsd` daemon and cached per `(contest, full key)` in `rankings.models.Ranking`; controllers must invalidate them (`invalidate_pi`, `Ranking.invalidate_contest`). A *partial key* (in URLs) selects the ranking; the *full key* adds the viewer's permission level (`admin#c`, `regular#<round_id>`).
 
-**Local app `czeciecamp`** (Czecie Camp Contest, for OI training camps): one contest = one camp, rounds are camp days, participants added by admins only, submissions allowed after a round ends. Rankings Dzienne+Stałe / Stałe / Dzienne / per round, computed from submissions in `CzecieCampRankingController.serialize_ranking`; freeze after the last non-trial round until unfrozen; per-camp settings in `CzecieCampConfig` (counting end, daily weight, round order). Admin UI is the "Camp panel" (`/c/<id>/camp/`) and the creation wizard (`/czeciecamp/create/`).
+**Local app `czeciecamp`** (Czecie Camp Contest, for OI training camps): one contest = one camp, rounds are camp days, participants added by admins only, submissions allowed after a round ends. Rankings Dzienne+Stałe / Stałe / Dzienne / per round, computed from submissions in `CzecieCampRankingController.serialize_ranking`; freeze after the last non-trial round until unfrozen; disqualifications (if `oioioi.disqualification` is installed) remove a participant (whole contest) or zero a problem (one submission), admins see them marked; per-camp settings in `CzecieCampConfig` (counting end, daily weight, round order). Admin UI is the "Camp panel" (`/c/<id>/camp/`) and the creation wizard (`/czeciecamp/create/`).
 
 ## Translations
 

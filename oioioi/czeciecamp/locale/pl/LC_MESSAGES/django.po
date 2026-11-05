@@ -463,3 +463,12 @@ msgstr "Punkty w rankingu"
 
 msgid "last rejudges of problems"
 msgstr "ostatnie ponowne oceny zadań"
+
+msgid "Disqualified, only admins see this row."
+msgstr "Zdyskwalifikowany, ten wiersz widzą tylko admini."
+
+msgid "disqualified"
+msgstr "zdyskwalifikowany"
+
+msgid "A submission to this problem is disqualified; the problem counts 0."
+msgstr "Zgłoszenie do tego zadania jest zdyskwalifikowane; zadanie liczy się za 0."
