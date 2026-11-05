@@ -865,3 +865,62 @@ class TestPanelExplainsEmptyQueue(LLMDetectTestCase):
         response = self.client.get(self.url)
         self.assertNotContains(response, "could not be analysed")
         self.assertEqual(len(response.context["rows"]), 1)
+
+
+class TestLineEndingsOfOldSubmissions(LLMDetectTestCase):
+    """Pasted code always arrives with CRLF. Submissions analysed long after
+    they were sent (an older contest) may have been pasted or uploaded, so
+    their line endings must not count as a habit.
+    """
+
+    CRLF = HUMAN_BFS.replace("\n", "\r\n")
+
+    def test_unknown_paste_has_no_line_endings_habit(self):
+        self.assertNotIn("line_endings", extract_habits(self.CRLF, F.C_FAMILY, paste_known=False)["values"])
+        self.assertEqual(extract_habits(self.CRLF, F.C_FAMILY)["values"]["line_endings"], "CRLF")
+
+    def test_backfilled_and_judged_submissions(self):
+        old = self._submit(self.humans[0], self.pis[0], self.CRLF, minutes=10)
+        assess_contest(self.contest)  # analyses it after the fact
+        features = SubmissionFeatures.objects.get(submission=old)
+        self.assertFalse(features.paste_known)
+        self.assertNotIn("line_endings", features.habits["values"])
+        new = self._submit(self.humans[1], self.pis[0], self.CRLF, minutes=10)
+        self.contest.controller.submission_judged(new)  # analysed when judged: an uploaded file
+        features = SubmissionFeatures.objects.get(submission=new)
+        self.assertTrue(features.paste_known)
+        self.assertEqual(features.habits["values"]["line_endings"], "CRLF")
+        # Recomputing keeps what is known.
+        compute_features(old)
+        self.assertFalse(SubmissionFeatures.objects.get(submission=old).paste_known)
+
+    def test_no_false_habit_break_in_an_older_contest(self):
+        user = self.humans[0]
+        for day, pi in enumerate(self.pis[:3]):
+            self._submit(user, pi, human_code(f"0-{day}"), minutes=60)  # uploaded, LF
+        self._submit(user, self.pis[3], human_code("0-3").replace("\n", "\r\n"), minutes=60)  # pasted: CRLF
+        for i, other in enumerate(self.humans[1:]):
+            for day, pi in enumerate(self.pis):
+                self._submit(other, pi, human_code(f"{i + 1}-{day}"), minutes=60)
+        assess_contest(self.contest)
+        assessment = RiskAssessment.objects.get(user=user, submission__problem_instance=self.pis[3])
+        self.assertNotIn("line_endings", [row["habit"] for row in assessment.context.get("habits", [])])
+        self.assertNotIn("habit_break", assessment.signals)
+
+    def test_migration_marks_backfilled_features(self):
+        import importlib
+
+        from django.apps import apps
+
+        migration = importlib.import_module("oioioi.llmdetect.migrations.0004_paste_known")
+        sent_and_judged = self._submit(self.humans[0], self.pis[0], HUMAN_BFS, minutes=10)
+        backfilled = self._submit(self.humans[1], self.pis[0], HUMAN_BFS, minutes=10)
+        pasted = self._submit(self.humans[2], self.pis[0], HUMAN_BFS, minutes=10, pasted=True)
+        for submission in (sent_and_judged, backfilled, pasted):
+            compute_features(submission)
+        SubmissionFeatures.objects.update(paste_known=True)
+        SubmissionFeatures.objects.filter(submission=sent_and_judged).update(computed_at=sent_and_judged.date + timedelta(minutes=5))
+        SubmissionFeatures.objects.filter(submission__in=[backfilled, pasted]).update(computed_at=backfilled.date + timedelta(days=30))
+        migration.mark_backfilled(apps, None)
+        known = dict(SubmissionFeatures.objects.values_list("submission_id", "paste_known"))
+        self.assertEqual(known, {sent_and_judged.id: True, backfilled.id: False, pasted.id: True})

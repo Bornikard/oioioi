@@ -342,7 +342,7 @@ def paste_characters(source):
     return found
 
 
-def extract_habits(source, language, pasted=False):
+def extract_habits(source, language, pasted=False, paste_known=True):
     """Habits of a program: ``{"values": {habit: value}, "template": [...],
     "macros": [...], "identifiers": [...], "chat": [...], "paste_chars": [...]}``.
     """
@@ -359,8 +359,9 @@ def extract_habits(source, language, pasted=False):
     }
     values = result["values"]
     raw_lines = source.split("\n")
-    # Text pasted into a form always has CRLF line ends, whatever the author uses.
-    if not pasted:
+    # Text pasted into a form always has CRLF line ends, whatever the author
+    # uses; when it is unknown whether the code was pasted, they say nothing.
+    if not pasted and paste_known:
         crlf = source.count("\r\n")
         values["line_endings"] = "CRLF" if crlf > source.count("\n") / 2 else "LF"
     values["indent"] = _indent([line.rstrip("\r") for line in raw_lines])

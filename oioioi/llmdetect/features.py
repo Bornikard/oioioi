@@ -12,7 +12,7 @@ import zlib
 from collections import Counter
 
 # Bump when the features or fingerprints change, so stored ones get recomputed.
-FEATURES_VERSION = 3
+FEATURES_VERSION = 4
 
 # Bounds on what is stored per submission, so that crafted code cannot make
 # its stored analysis (and the memory to assess a contest) large.

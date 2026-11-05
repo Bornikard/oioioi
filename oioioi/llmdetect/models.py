@@ -45,6 +45,9 @@ class SubmissionFeatures(models.Model):
     version = models.IntegerField()
     language = models.CharField(max_length=16)
     pasted = models.BooleanField(default=False)
+    # False when the submission was analysed long after it was sent (e.g. an
+    # older contest): then it is unknown whether it was pasted.
+    paste_known = models.BooleanField(default=True)
     features = models.JSONField()
     fingerprints = models.JSONField()
     line_hashes = models.JSONField()
