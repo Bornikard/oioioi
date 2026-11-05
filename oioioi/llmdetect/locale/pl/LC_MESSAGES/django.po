@@ -678,6 +678,9 @@ msgstr "Mało wcześniejszych zgłoszeń do innych zadań; odchylenie od własne
 msgid "profile uncertain"
 msgstr "profil niepewny"
 
+msgid "open the submission"
+msgstr "otwórz zgłoszenie"
+
 msgid "No submissions yet."
 msgstr "Nie ma jeszcze zgłoszeń."
 
@@ -816,6 +819,9 @@ msgstr "Ryzyko"
 
 msgid "Signals"
 msgstr "Sygnały"
+
+msgid "show the analysis"
+msgstr "pokaż analizę"
 
 msgid "supervised"
 msgstr "nadzorowane"
