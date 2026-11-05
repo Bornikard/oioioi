@@ -19,6 +19,9 @@ class LLMDetectConfig(models.Model):
     computed_at = models.DateTimeField(null=True, blank=True)
     # The newest submission included in the last computation.
     last_submission_id = models.IntegerField(default=0)
+    # Submissions the last computation could not analyse, and the first reason.
+    read_errors = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
     # Set when something the results depend on changes, e.g. references.
     dirty = models.BooleanField(default=True)
 
@@ -42,6 +45,9 @@ class SubmissionFeatures(models.Model):
     version = models.IntegerField()
     language = models.CharField(max_length=16)
     pasted = models.BooleanField(default=False)
+    # False when the submission was analysed long after it was sent (e.g. an
+    # older contest): then it is unknown whether it was pasted.
+    paste_known = models.BooleanField(default=True)
     features = models.JSONField()
     fingerprints = models.JSONField()
     line_hashes = models.JSONField()
