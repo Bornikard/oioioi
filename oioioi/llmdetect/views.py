@@ -21,7 +21,15 @@ from oioioi.llmdetect.explain import SIGNAL_LABELS, habit_rows, profile_features
 from oioioi.llmdetect.forms import BulkReferencesForm, DecisionForm, PromptsForm, ReferenceForm, SettingsForm
 from oioioi.llmdetect.models import LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, get_config, mark_dirty
 from oioioi.llmdetect.prompts import PROMPTS, prompts_file, statement_text
-from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, read_source, update_if_needed, user_rankings
+from oioioi.llmdetect.scoring import (
+    FLAG_THRESHOLD,
+    SUBMISSION_KINDS,
+    assess_contest,
+    contest_submissions,
+    read_source,
+    update_if_needed,
+    user_rankings,
+)
 from oioioi.programs.models import ProgramSubmission
 
 SCRIPT_PATH = os.path.join(os.path.dirname(__file__), "tools", "llm_references.py")
@@ -84,8 +92,22 @@ def panel_view(request):
         "threshold": FLAG_THRESHOLD,
         "low_confidence": LOW_CONFIDENCE,
         "middleware_enabled": "oioioi.llmdetect.middleware.ProblemViewMiddleware" in settings.MIDDLEWARE,
+        "summary": _summary(contest),
     }
     return TemplateResponse(request, "llmdetect/panel.html", context)
+
+
+def _summary(contest):
+    """How many submissions there are, are analysed, and why the others are not."""
+    program = ProgramSubmission.objects.filter(problem_instance__contest=contest, kind__in=SUBMISSION_KINDS, user__isnull=False)
+    total = program.count()
+    counted = contest_submissions(contest).count()
+    return {
+        "total": total,
+        "counted": counted,
+        "staff": total - counted,
+        "analysed": RiskAssessment.objects.filter(contest=contest).count(),
+    }
 
 
 @require_POST

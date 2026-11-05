@@ -123,12 +123,12 @@ def sigmoid(x):
 
 
 def read_source(submission):
-    submission.source_file.open("rb")
+    """The code of a submission, read the way SIO2 itself reads it."""
     try:
         data = submission.source_file.read()
     finally:
         submission.source_file.close()
-    return data.decode("utf-8", "replace")
+    return data.decode("utf-8", "replace") if isinstance(data, bytes) else data
 
 
 def compute_features(submission, source=None, pasted=None):
@@ -177,16 +177,22 @@ def contest_submissions(contest):
     )
 
 
-def ensure_features(submissions):
-    """Features of ``submissions`` by submission id, computing the missing ones."""
+def ensure_features(submissions, errors=None):
+    """Features of ``submissions`` by submission id, computing the missing ones.
+
+    Submissions that cannot be analysed are left out; ``(submission id,
+    message)`` of each is appended to ``errors`` if given.
+    """
     submissions = list(submissions)
     stored = {f.submission_id: f for f in SubmissionFeatures.objects.filter(submission__in=submissions, version=FEATURES_VERSION)}
     for submission in submissions:
         if submission.id not in stored:
             try:
                 stored[submission.id] = compute_features(submission)
-            except Exception:
+            except Exception as error:
                 logger.warning("Cannot compute LLM detection features of submission %s", submission.id, exc_info=True)
+                if errors is not None:
+                    errors.append((submission.id, f"{type(error).__name__}: {error}"[:300]))
     return stored
 
 
@@ -265,7 +271,8 @@ class ContestAssessor:
     def run(self):
         submissions = list(contest_submissions(self.contest))
         self.last_submission_id = max((s.id for s in submissions), default=0)
-        features = ensure_features(submissions)
+        self.errors = []
+        features = ensure_features(submissions, self.errors)
         trusted_rounds = set(self.config.trusted_rounds.values_list("id", flat=True))
         self.items = []
         for submission in submissions:
@@ -739,7 +746,10 @@ class ContestAssessor:
         self.config.computed_at = now
         self.config.dirty = False
         self.config.last_submission_id = self.last_submission_id
-        self.config.save(update_fields=["computed_at", "dirty", "last_submission_id"])
+        # Shown on the panel, so that the staff know why submissions are missing.
+        self.config.read_errors = len(self.errors)
+        self.config.last_error = f"#{self.errors[0][0]}: {self.errors[0][1]}" if self.errors else ""
+        self.config.save(update_fields=["computed_at", "dirty", "last_submission_id", "read_errors", "last_error"])
 
 
 def _round_floats(value):

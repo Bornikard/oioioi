@@ -833,3 +833,35 @@ class TestHostileCode(SimpleTestCase):
             references, errors = parse_references("### reference problem=abc\nint a;\n" * 4, {"abc": "pi"})
         self.assertEqual(references, [])
         self.assertIn("More than 3 references", errors[0])
+
+
+class TestPanelExplainsEmptyQueue(LLMDetectTestCase):
+    def setUp(self):
+        super().setUp()
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.url = reverse("llmdetect_panel", kwargs={"contest_id": self.contest.id})
+
+    def test_summary(self):
+        self._submit(self.humans[0], self.pis[0], HUMAN_BFS, minutes=10)
+        self._submit(self.admin, self.pis[0], HUMAN_BFS, minutes=10)
+        response = self.client.get(self.url)
+        self.assertEqual(response.context["summary"], {"total": 2, "counted": 1, "staff": 1, "analysed": 1})
+        self.assertContains(response, "Analysed 1 of 1 submissions by participants.")
+        self.assertContains(response, "1 submissions by staff")
+
+    def test_only_staff_submissions(self):
+        self._submit(self.admin, self.pis[0], HUMAN_BFS, minutes=10)
+        self.assertContains(self.client.get(self.url), "All submissions of this contest are by staff")
+
+    def test_unreadable_sources_are_reported_and_retried(self):
+        submission = self._submit(self.humans[0], self.pis[0], HUMAN_BFS, minutes=10)
+        with patch("oioioi.llmdetect.scoring.read_source", side_effect=FileNotFoundError("no such file")):
+            response = self.client.get(self.url)
+        self.assertContains(response, "1 submission could not be analysed")
+        self.assertContains(response, f"#{submission.id}: FileNotFoundError: no such file")
+        self.assertEqual(response.context["rows"], [])
+        # Once the file can be read, Recompute brings it in.
+        self.client.post(reverse("llmdetect_recompute", kwargs={"contest_id": self.contest.id}))
+        response = self.client.get(self.url)
+        self.assertNotContains(response, "could not be analysed")
+        self.assertEqual(len(response.context["rows"]), 1)
