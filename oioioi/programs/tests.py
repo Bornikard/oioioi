@@ -40,10 +40,12 @@ from oioioi.filetracker.tests import TestStreamingMixin
 from oioioi.problems.models import Problem
 from oioioi.programs import utils
 from oioioi.programs.controllers import ProgrammingContestController
+from oioioi.programs.forms import ContestLanguagesConfigForm
 from oioioi.programs.handlers import collect_tests, grade_tests
 from oioioi.programs.models import (
     CheckerFormatForContest,
     CheckerFormatForProblem,
+    ContestLanguagesConfig,
     LanguageOverrideForTest,
     ModelSolution,
     ProblemAllowedLanguage,
@@ -2076,6 +2078,34 @@ class TestAllowedLanguages(TestCase, SubmitFileMixin):
         response = self.submit_code(contest, self.problem_instance, "int main() {}", prog_lang="")
         self._assertSubmitted(contest, response)
         self.assertTrue(ProgramSubmission.objects.latest("id").source_file.name.endswith(".cpp"))
+
+    def test_contest_allowed_languages(self):
+        contest = Contest.objects.get()
+        config = ContestLanguagesConfig.objects.create(contest=contest, allowed_languages=[])
+        self.assertIn("C", get_allowed_languages_dict(ProblemInstance.objects.get()))
+
+        config.allowed_languages = ["Python", "Brainfuck"]
+        config.save()
+        allowed_languages = get_allowed_languages_dict(ProblemInstance.objects.get())
+        self.assertEqual(list(allowed_languages), ["Python"])
+
+        response = self.submit_code(contest, self.problem_instance, "int main() {}", prog_lang="C")
+        self.assertContains(response, "Select a valid choice. C is not one")
+        response = self.submit_code(contest, self.problem_instance, "print(1)", prog_lang="")
+        self._assertSubmitted(contest, response)
+
+    def test_contest_allowed_languages_admin(self):
+        contest = Contest.objects.get()
+        self.assertTrue(self.client.login(username="test_admin"))
+        url = reverse("oioioiadmin:contests_contest_change", args=(contest.id,))
+        response = self.client.get(url, follow=True)
+        self.assertContains(response, 'name="languages_config-0-allowed_languages" value="Python"')
+
+        form = ContestLanguagesConfigForm(data={"allowed_languages": ["C++"]}, instance=ContestLanguagesConfig(contest=contest))
+        self.assertTrue(form.is_valid())
+        form.save()
+        self.assertEqual(ContestLanguagesConfig.objects.get().allowed_languages, ["C++"])
+        self.assertFalse(ContestLanguagesConfigForm(data={"allowed_languages": ["Brainfuck"]}).is_valid())
 
     def test_language_required_when_several_allowed(self):
         ProblemAllowedLanguage.objects.create(problem=self.problem, language="C")

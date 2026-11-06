@@ -436,6 +436,26 @@ class ContestCompiler(models.Model):
         unique_together = ("contest", "language")
 
 
+class ContestLanguagesConfig(models.Model):
+    """Restricts the languages that can be used in a contest.
+    An empty list means that every language allowed for a problem is allowed."""
+
+    contest = models.OneToOneField(Contest, related_name="languages_config", on_delete=models.CASCADE)
+    allowed_languages = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name=_("allowed languages"),
+        help_text=_("Leave empty to allow all languages."),
+    )
+
+    class Meta:
+        verbose_name = _("contest languages configuration")
+        verbose_name_plural = _("contest languages configurations")
+
+    def __str__(self):
+        return ", ".join(self.allowed_languages) or "*"
+
+
 class ProblemAllowedLanguage(models.Model):
     """Represents allowed language for specific problem."""
 

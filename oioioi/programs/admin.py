@@ -17,6 +17,7 @@ from oioioi.contests.utils import is_contest_admin
 from oioioi.problems.admin import MainProblemInstanceAdmin, ProblemPackageAdmin
 from oioioi.programs.forms import (
     CompilerInlineForm,
+    ContestLanguagesConfigForm,
     ProblemAllowedLanguageInlineForm,
     ProblemCompilerInlineForm,
 )
@@ -24,6 +25,7 @@ from oioioi.programs.models import (
     CheckerFormatForContest,
     CheckerFormatForProblem,
     ContestCompiler,
+    ContestLanguagesConfig,
     LibraryProblemData,
     ModelSolution,
     OutputChecker,
@@ -250,15 +252,40 @@ class ContestCompilerInline(admin.StackedInline):
         return self.has_change_permission(request, obj)
 
 
+class ContestLanguagesConfigInline(admin.StackedInline):
+    model = ContestLanguagesConfig
+    form = ContestLanguagesConfigForm
+    max_num = 1
+    can_delete = False
+    category = _("Advanced")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.verbose_name = self.verbose_name_plural = _("Allowed languages")
+
+    def has_add_permission(self, request, obj=None):
+        return is_contest_admin(request)
+
+    def has_change_permission(self, request, obj=None):
+        return is_contest_admin(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return self.has_change_permission(request, obj)
+
+
 class ProgramsContestAdminMixin:
-    """Adds :class:`~oioioi.programs.models.ProgramsConfig`
-    and :class:`~oioioi.programs.models.ContestCompiler` to an admin
+    """Adds :class:`~oioioi.programs.models.ProgramsConfig`,
+    :class:`~oioioi.programs.models.ContestCompiler` and
+    :class:`~oioioi.programs.models.ContestLanguagesConfig` to an admin
     panel.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.inlines = tuple(self.inlines) + (ProgramsConfigInline, ContestCompilerInline)
+        self.inlines = tuple(self.inlines) + (ProgramsConfigInline, ContestCompilerInline, ContestLanguagesConfigInline)
 
 
 ContestAdmin.mix_in(ProgramsContestAdminMixin)

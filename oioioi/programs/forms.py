@@ -2,8 +2,9 @@ from django import forms
 from django.conf import settings
 from django.urls import reverse
 from django.utils.translation import gettext
+from django.utils.translation import gettext_lazy as _
 
-from oioioi.programs.models import ContestCompiler
+from oioioi.programs.models import ContestCompiler, ContestLanguagesConfig
 from oioioi.programs.utils import get_submittable_languages
 
 
@@ -59,3 +60,20 @@ class ProblemAllowedLanguageInlineForm(forms.ModelForm):
         self.language_choices = [(lang, lang_info["display_name"]) for lang, lang_info in submittable_languages]
         self.fields["language"] = forms.ChoiceField(choices=self.language_choices)
         self.fields["language"].widget.attrs.update({"data-compilerchoicesurl": reverse("get_compiler_hints")})
+
+
+class ContestLanguagesConfigForm(forms.ModelForm):
+    allowed_languages = forms.MultipleChoiceField(
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label=_("Allowed languages"),
+        help_text=_("Leave all unchecked to allow every language."),
+    )
+
+    class Meta:
+        model = ContestLanguagesConfig
+        fields = ["allowed_languages"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["allowed_languages"].choices = [(lang, info["display_name"]) for lang, info in get_submittable_languages().items()]

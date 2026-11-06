@@ -81,3 +81,21 @@ msgstr "Coś w zadaniach uległo zmianie. Jeśli zmiana była drobna (np. liter�
 
 msgid "Problems to be rejudged:"
 msgstr "Zadania do ponownej oceny:"
+
+msgid "Allowed languages"
+msgstr "Dozwolone języki"
+
+msgid "allowed languages"
+msgstr "dozwolone języki"
+
+msgid "Leave empty to allow all languages."
+msgstr "Pozostaw puste, aby zezwolić na wszystkie języki."
+
+msgid "Leave all unchecked to allow every language."
+msgstr "Pozostaw wszystkie odznaczone, aby zezwolić na każdy język."
+
+msgid "contest languages configuration"
+msgstr "konfiguracja języków konkursu"
+
+msgid "contest languages configurations"
+msgstr "konfiguracje języków konkursu"
