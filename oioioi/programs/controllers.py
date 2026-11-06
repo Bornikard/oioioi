@@ -108,6 +108,13 @@ class ProgrammingProblemController(ProblemController):
         problem_instance = submission.problem_instance
         extension = get_extension(submission.source_file.name)
         language = get_language_by_extension(problem_instance, extension)
+        if language is None:
+            # Restrictions on allowed languages only limit what can be submitted;
+            # existing submissions (e.g. model solutions) are still judged.
+            language = next(
+                (lang for lang, exts in getattr(settings, "SUBMITTABLE_EXTENSIONS", {}).items() if extension in exts),
+                None,
+            )
         assert language
 
         compiler = problem_instance.controller.get_compiler_for_language(problem_instance, language)

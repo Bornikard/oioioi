@@ -2094,6 +2094,14 @@ class TestAllowedLanguages(TestCase, SubmitFileMixin):
         response = self.submit_code(contest, self.problem_instance, "print(1)", prog_lang="")
         self._assertSubmitted(contest, response)
 
+    def test_contest_allowed_languages_do_not_break_judging(self):
+        contest = Contest.objects.get()
+        ContestLanguagesConfig.objects.create(contest=contest, allowed_languages=["Python"])
+        problem_instance = ProblemInstance.objects.get()
+        submission = ProgramSubmission(problem_instance=problem_instance)
+        submission.source_file.name = "sol.cpp"
+        self.assertIsNotNone(problem_instance.controller.get_compiler_for_submission(submission))
+
     def test_contest_allowed_languages_admin(self):
         contest = Contest.objects.get()
         self.assertTrue(self.client.login(username="test_admin"))
