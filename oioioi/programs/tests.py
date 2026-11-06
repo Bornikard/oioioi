@@ -2064,6 +2064,26 @@ class TestAllowedLanguages(TestCase, SubmitFileMixin):
         response = self.submit_code(contest, self.problem_instance, "some code", prog_lang="C")
         self._assertSubmitted(contest, response)
 
+    def test_single_allowed_language_is_preselected(self):
+        ProblemAllowedLanguage.objects.create(problem=self.problem, language="C++")
+        contest = Contest.objects.get()
+        langs_field_name = form_field_id_for_langs(self.problem_instance)
+        response = self.client.get(reverse("submit", kwargs={"contest_id": contest.id}))
+        options = response.context["form"].fields[langs_field_name].choices
+        self.assertEqual([lang for lang, _ in options], ["C++"])
+        self.assertContains(response, '<option value="C++" selected>')
+
+        response = self.submit_code(contest, self.problem_instance, "int main() {}", prog_lang="")
+        self._assertSubmitted(contest, response)
+        self.assertTrue(ProgramSubmission.objects.latest("id").source_file.name.endswith(".cpp"))
+
+    def test_language_required_when_several_allowed(self):
+        ProblemAllowedLanguage.objects.create(problem=self.problem, language="C")
+        ProblemAllowedLanguage.objects.create(problem=self.problem, language="C++")
+        contest = Contest.objects.get()
+        response = self.submit_code(contest, self.problem_instance, "int main() {}", prog_lang="")
+        self.assertContains(response, "You have to choose programming language.")
+
 
 class TestLanguageOverrideForTest(TestCase):
     fixtures = ["test_contest", "test_full_package", "test_problem_instance"]

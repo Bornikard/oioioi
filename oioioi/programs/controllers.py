@@ -437,6 +437,12 @@ class ProgrammingProblemController(ProblemController):
             ext = get_extension(cleaned_data["file"].name)
             cleaned_data[langs_field_name] = get_language_by_extension(problem_instance, ext)
 
+        # The language picker is disabled (so not submitted) until the user
+        # types some code; with only one allowed language there is nothing to pick.
+        allowed_langs = list(get_allowed_languages_dict(problem_instance).keys())
+        if not cleaned_data[langs_field_name] and is_code_pasted and len(allowed_langs) == 1:
+            cleaned_data[langs_field_name] = allowed_langs[0]
+
         if not cleaned_data[langs_field_name]:
             if is_code_pasted:
                 raise ValidationError(_("You have to choose programming language."))
@@ -514,8 +520,10 @@ class ProgrammingProblemController(ProblemController):
     def _add_langs_to_form(self, request, form, problem_instance):
         controller = problem_instance.controller
 
-        choices = [("", "")]
-        for lang in get_allowed_languages_dict(problem_instance).keys():
+        allowed_langs = list(get_allowed_languages_dict(problem_instance).keys())
+        # With a single allowed language it is preselected instead of an empty choice.
+        choices = [] if len(allowed_langs) == 1 else [("", "")]
+        for lang in allowed_langs:
             compiler_name = None
             compiler = controller.get_compiler_for_language(problem_instance, lang)
             if compiler is not None:
@@ -537,6 +545,7 @@ class ProgrammingProblemController(ProblemController):
             required=False,
             label=_("Programming language"),
             choices=choices,
+            initial=allowed_langs[0] if len(allowed_langs) == 1 else None,
             widget=forms.Select(attrs={"disabled": "disabled"}),
         )
         narrow_input_field(form.fields[field_name])
