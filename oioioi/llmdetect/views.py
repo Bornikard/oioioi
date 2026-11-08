@@ -1,5 +1,6 @@
 import os
 from collections import Counter
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -26,6 +27,7 @@ from oioioi.llmdetect.scoring import (
     SUBMISSION_KINDS,
     assess_contest,
     contest_submissions,
+    history_submissions,
     read_source,
     update_if_needed,
     user_rankings,
@@ -88,7 +90,7 @@ def panel_view(request):
         "config": config,
         "rows": rows,
         "problems": problems,
-        "settings_form": SettingsForm(instance=config, contest=contest),
+        "settings_form": SettingsForm(instance=config, contest=contest, user=request.user),
         "threshold": FLAG_THRESHOLD,
         "low_confidence": LOW_CONFIDENCE,
         "middleware_enabled": "oioioi.llmdetect.middleware.ProblemViewMiddleware" in settings.MIDDLEWARE,
@@ -102,11 +104,13 @@ def _summary(contest):
     program = ProgramSubmission.objects.filter(problem_instance__contest=contest, kind__in=SUBMISSION_KINDS, user__isnull=False)
     total = program.count()
     counted = contest_submissions(contest).count()
+    users = contest_submissions(contest).order_by().values("user_id").distinct()
     return {
         "total": total,
         "counted": counted,
         "staff": total - counted,
         "analysed": RiskAssessment.objects.filter(contest=contest).count(),
+        "history": history_submissions(contest, users).count(),
     }
 
 
@@ -122,7 +126,7 @@ def recompute_view(request):
 @enforce_condition(contest_exists & is_contest_admin)
 def settings_view(request):
     config = get_config(request.contest)
-    form = SettingsForm(request.POST, instance=config, contest=request.contest)
+    form = SettingsForm(request.POST, instance=config, contest=request.contest, user=request.user)
     if form.is_valid():
         form.save()
         mark_dirty(request.contest)
@@ -332,7 +336,30 @@ def user_view(request, user_id):
     }
     if selected is not None:
         context.update(_comparison(contest, user, selected, assessments, users))
+        if context["disqualification_enabled"]:
+            context.update(_disqualification(selected))
     return TemplateResponse(request, "llmdetect/user.html", context)
+
+
+def _disqualification(selected):
+    """Whether the selected submission is disqualified, and a link to the
+    disqualification form filled in for it otherwise.
+    """
+    from oioioi.disqualification.models import Disqualification
+
+    submission = selected.submission
+    if Disqualification.objects.filter(submission=submission, guilty=True).exists():
+        return {"selected_disqualified": True}
+    params = urlencode(
+        {
+            "user": submission.user_id,
+            "submission": submission.id,
+            "title": _("Solution not written by yourself"),
+            "content": _("Submission #%(id)s (%(problem)s) was not written by you, so the problem counts 0.")
+            % {"id": submission.id, "problem": submission.problem_instance.short_name},
+        }
+    )
+    return {"disqualify_url": f"{reverse('oioioiadmin:disqualification_disqualification_add')}?{params}"}
 
 
 def _comparison(contest, user, selected, assessments, users):

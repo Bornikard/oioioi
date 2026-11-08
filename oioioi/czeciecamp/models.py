@@ -1,8 +1,9 @@
 import math
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models.signals import post_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 
@@ -228,6 +229,18 @@ def ordered_rankings(contest):
 def _create_round_ranking(sender, instance, created, raw=False, **kwargs):
     if created and not raw and instance.contest.controller_name == CONTROLLER_NAME:
         create_round_ranking(instance)
+
+
+if "oioioi.disqualification" in settings.INSTALLED_APPS:
+    from oioioi.disqualification.models import Disqualification
+
+    @receiver([post_save, post_delete], sender=Disqualification)
+    def _disqualification_changed(sender, instance, raw=False, **kwargs):
+        # Camp rankings leave disqualified participants and problems out.
+        if not raw and instance.contest.controller_name == CONTROLLER_NAME:
+            from oioioi.rankings.models import Ranking
+
+            Ranking.invalidate_contest(instance.contest)
 
 
 def get_camp_config(contest):

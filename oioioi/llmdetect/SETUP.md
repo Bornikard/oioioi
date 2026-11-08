@@ -276,6 +276,13 @@ models and styles per problem.
 
 - In the panel settings, tick the rounds written under supervision without
   internet, if there are any: their code anchors each participant's style.
+- Under **earlier contests**, tick previous camps of the same participants.
+  Their submissions there are added to the profiles (not scored again), so
+  habits are known from the first day of the camp. Each counts with the
+  **weight of earlier contests** (0.5 by default; a submission of this camp
+  counts 1 on the same day and less on later days). Only contests you
+  administer are listed. The first **Przelicz** after ticking them analyses
+  those submissions, which takes a while for big contests.
 - Mention the automatic analysis in the camp rules (GDPR: purpose and basis;
   for minors also inform the parents).
 - The **review queue** orders participants by risk; it is recomputed when the

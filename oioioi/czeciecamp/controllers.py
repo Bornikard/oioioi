@@ -247,6 +247,24 @@ class CzecieCampRankingController(DefaultRankingController):
             return None
         return reverse("submission", kwargs={"contest_id": self.contest.id, "submission_id": best[1]})
 
+    def _disqualifications(self):
+        """Users disqualified in the whole contest, and (user id, problem
+        instance id) of problems with a disqualified submission. A
+        disqualified submission makes its whole problem count 0: otherwise
+        resubmitting the same code would bring the points back.
+        """
+        if "oioioi.disqualification" not in settings.INSTALLED_APPS:
+            return set(), set()
+        from oioioi.disqualification.models import Disqualification
+
+        users, problems = set(), set()
+        for user_id, pi_id in Disqualification.objects.filter(contest=self.contest, guilty=True).values_list("user_id", "submission__problem_instance_id"):
+            if pi_id is None:
+                users.add(user_id)
+            else:
+                problems.add((user_id, pi_id))
+        return users, problems
+
     def serialize_ranking(self, key):
         now = timezone.now()
         config = get_camp_config(self.contest)
@@ -275,8 +293,10 @@ class CzecieCampRankingController(DefaultRankingController):
 
         hidden_users = set(config.hidden_users)
         users = list(self.filter_users_for_ranking(key, User.objects.all()).distinct().order_by("last_name", "first_name", "username"))
+        disqualified_users, disqualified_problems = self._disqualifications()
         if not privileged:
-            users = [user for user in users if user.id not in hidden_users]
+            # Admins see disqualified participants, marked, without a place.
+            users = [user for user in users if user.id not in hidden_users and user.id not in disqualified_users]
         submissions = (
             Submission.objects.filter(
                 problem_instance__in=pis,
@@ -287,6 +307,8 @@ class CzecieCampRankingController(DefaultRankingController):
             .only("id", "user_id", "problem_instance_id", "date", "score")
             .order_by("date", "id")
         )
+        if disqualified_problems:
+            submissions = [s for s in submissions if (s.user_id, s.problem_instance_id) not in disqualified_problems]
 
         best_daily, best_stale = best_submissions(submissions, pi_by_id, counting_end, stale_end, last_daily, lambda submission: submission.score)
 
@@ -304,6 +326,7 @@ class CzecieCampRankingController(DefaultRankingController):
                     "daily": daily[0] if daily else None,
                     "stale": stale[0] if stale else None,
                     "url": self._submission_url(stale if stale_weight else daily),
+                    "disqualified": (user.id, pi.id) in disqualified_problems,
                 }
                 if combined:
                     if daily or stale:
@@ -326,14 +349,16 @@ class CzecieCampRankingController(DefaultRankingController):
                     "stale_sum": stale_sum,
                     "combined": bool(combined),
                     "hidden": user.id in hidden_users,
+                    "disqualified": user.id in disqualified_users,
                 }
             )
 
-        # Hidden participants (shown only to admins) get no place or medal.
-        shown = [row for row in rows if not row["hidden"]]
+        # Hidden and disqualified participants (shown only to admins) get no
+        # place or medal, and do not move the others down.
+        shown = [row for row in rows if not row["hidden"] and not row["disqualified"]]
         self._assign_places(shown, itemgetter("sum"))
         for row in rows:
-            if row["hidden"]:
+            if row["hidden"] or row["disqualified"]:
                 row["place"] = None
         rows.sort(key=itemgetter("sum"), reverse=True)
         leader_sum = shown[0]["sum"] if shown else 0
@@ -342,7 +367,7 @@ class CzecieCampRankingController(DefaultRankingController):
             row["diff"] = row["sum"] - leader_sum
             row["percentage"] = 100 * row["sum"] / leader_sum if leader_sum else 0
             row["medal"] = None
-            if row["sum"] > 0 and not row["hidden"]:
+            if row["sum"] > 0 and row["place"] is not None:
                 for medal, last_place in enumerate((gold, silver, bronze), start=1):
                     if row["place"] <= last_place:
                         row["medal"] = medal

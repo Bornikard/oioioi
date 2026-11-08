@@ -32,6 +32,11 @@ Setup
 4. Mark the rounds written under supervision, if there are any, as
    *supervised rounds* in the settings. Their submissions anchor each
    participant's style with triple weight.
+5. Optionally choose *earlier contests* (e.g. previous camps) in the
+   settings. Submissions of the same participants there are added to their
+   profiles, with the *weight of earlier contests* and no decay in time, but
+   are not scored. Only contests the admin administers are listed, and
+   choices made by other admins in contests this one cannot see are kept.
 
 The panel is for contest admins only (not basic admins). After the camp,
 ``manage.py llmdetect_purge CONTEST`` deletes the data, keeping anonymized

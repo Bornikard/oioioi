@@ -23,6 +23,7 @@ from oioioi.czeciecamp.models import (
 )
 from oioioi.czeciecamp.rejudge_report import build_rejudge_report
 from oioioi.czeciecamp.views import rounded_down, rounded_now
+from oioioi.disqualification.models import Disqualification
 from oioioi.participants.models import Participant
 from oioioi.problems.models import Problem, ProblemSite
 from oioioi.rankings.models import Ranking
@@ -274,6 +275,46 @@ class TestCampRankings(CampTestCase):
         data = self._ranking(self.daily, "admin")
         self.assertEqual([(row["user"], row["place"], row["medal"]) for row in data["rows"]], [(self.user1, None, None), (self.user2, 1, 1)])
         self.assertEqual(self._row(data, self.user1)["diff"], 50)
+
+    def test_disqualified_participant(self):
+        self._submit(self.user1, self.pi1, _date(1, hour=1), 100)
+        self._submit(self.user2, self.pi1, _date(1, hour=1), 50)
+        ranking = Ranking.objects.create(contest=self.contest, key="regular#main#test", needs_recalculation=False)
+        disqualification = Disqualification.objects.create(contest=self.contest, user=self.user1, title="LLM", content="Generated code.")
+        ranking.refresh_from_db()
+        self.assertTrue(ranking.needs_recalculation)
+        data = self._ranking(self.daily)
+        self.assertEqual([(row["user"], row["place"], row["medal"]) for row in data["rows"]], [(self.user2, 1, 1)])
+        data = self._ranking(self.daily, "admin")
+        self.assertEqual([(row["user"], row["place"], row["medal"]) for row in data["rows"]], [(self.user1, None, None), (self.user2, 1, 1)])
+        self.assertTrue(self._row(data, self.user1)["disqualified"])
+        html = self.rcontroller._render_ranking_page(f"admin#{self.daily.id}#test", data, 1)
+        self.assertIn("disqualified", html)
+        # Withdrawn: back in the ranking.
+        disqualification.guilty = False
+        disqualification.save()
+        data = self._ranking(self.daily)
+        self.assertEqual([(row["user"], row["place"]) for row in data["rows"]], [(self.user1, 1), (self.user2, 2)])
+
+    def test_disqualified_submission(self):
+        self._submit(self.user1, self.pi1, _date(1, hour=1), 40)
+        cheated = self._submit(self.user1, self.pi1, _date(1, hour=2), 100)
+        # The same code sent again, after the disqualified one.
+        self._submit(self.user1, self.pi1, _date(1, hour=3), 100)
+        self._submit(self.user1, self.pi2, _date(2, hour=1), 30)
+        Disqualification.objects.create(contest=self.contest, user=self.user1, submission=cheated, title="LLM", content="Generated code.")
+        data = self._ranking(self.stale)
+        row = self._row(data, self.user1)
+        # The whole problem counts 0; the other problems and the place stay.
+        self.assertEqual(row["sum"], 30)
+        self.assertEqual(row["place"], 1)
+        pis = [pi for pi, _visible in data["problem_instances"]]
+        self.assertTrue(row["cells"][pis.index(self.pi1)]["disqualified"])
+        self.assertIsNone(row["cells"][pis.index(self.pi1)]["stale"])
+        # Shown as DQ to admins only.
+        self.assertNotIn(">DQ<", self.rcontroller._render_ranking_page(f"regular#{self.stale.id}#test", data, 1))
+        admin = self._ranking(self.stale, "admin")
+        self.assertIn(">DQ<", self.rcontroller._render_ranking_page(f"admin#{self.stale.id}#test", admin, 1))
 
     def test_negative_weight(self):
         self._submit(self.user1, self.pi1, _date(1, hour=1), 50)
