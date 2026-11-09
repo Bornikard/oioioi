@@ -431,12 +431,24 @@ msgid "%(similarity)s in common with a submission of %(user)s."
 msgstr "%(similarity)s wspólne ze zgłoszeniem: %(user)s."
 
 #, python-format
-msgid "Typical of LLM code: %(reasons)s."
-msgstr "Typowe dla kodu LLM: %(reasons)s."
+msgid "LLM-likeness of the code: %(score)s."
+msgstr "Podobieństwo kodu do kodu LLM: %(score)s."
 
 #, python-format
 msgid "Model: %(model)s."
 msgstr "Model: %(model)s."
+
+#, python-format
+msgid "Typical of LLM code: %(reasons)s."
+msgstr "Typowe dla kodu LLM: %(reasons)s."
+
+#, python-format
+msgid "Like LLM code: %(reasons)s."
+msgstr "Jak w kodzie LLM: %(reasons)s."
+
+#, python-format
+msgid "Unlike LLM code: %(reasons)s."
+msgstr "Inaczej niż w kodzie LLM: %(reasons)s."
 
 msgid "A confirmed submission becomes an LLM reference of its problem."
 msgstr "Potwierdzone zgłoszenie staje się referencją LLM swojego zadania."

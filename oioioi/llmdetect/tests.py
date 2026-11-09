@@ -107,6 +107,38 @@ int main(){
 }
 """
 
+# A beginner's solution: clearly not LLM-like.
+SCHOOL_CODE = """#include <iostream>
+using namespace std;
+
+int main()
+{
+    int n;
+    cin >> n;
+
+    int a[30000];
+
+    for (int i = 0; i < n; i++)
+    {
+        cin >> a[i];
+    }
+
+    int ile = 0;
+
+    for (int i = 1; i < n - 1; i++)
+    {
+        if (a[i] > a[i - 1] && a[i] > a[i + 1])
+        {
+            ile++;
+        }
+    }
+
+    cout << ile;
+
+    return 0;
+}
+"""
+
 _STATEMENTS = [
     "for(int i=0;i<n;i++)a[i]{op}=b[i];",
     "if(x{cmp}y)swap(x,y);",
@@ -152,6 +184,25 @@ class TestFeatures(SimpleTestCase):
         self.assertGreater(llm_score, 0.8)
         self.assertLess(human_score, 0.1)
         self.assertIn("sentence_comment_ratio", [name for name, _c in reasons])
+
+    def test_using_namespace_std_is_not_a_std_prefix(self):
+        features = F.extract_features(SCHOOL_CODE, F.C_FAMILY)
+        self.assertEqual(features["std_qualified_per_100"], 0)
+        self.assertEqual(features["using_namespace_std"], 1)
+        self.assertGreater(F.extract_features("int main() { std::cout << 1; std::cin.tie(0); }", F.C_FAMILY)["std_qualified_per_100"], 0)
+
+    def test_llm_style_explained_both_ways(self):
+        score, reasons = F.llm_style(F.extract_features(SCHOOL_CODE, F.C_FAMILY))
+        self.assertLess(score, 0.1)
+        detail = {
+            "score": score,
+            "reasons": [name for name, c in reasons if c > 0][:3],
+            "against": [name for name, c in reasons if c < 0][:3],
+        }
+        text = describe("llm_style", detail)
+        self.assertIn("LLM-likeness of the code: ", text)
+        self.assertIn("Unlike LLM code: using namespace std, one- or two-letter identifiers", text)
+        self.assertNotIn("std:: prefixes", text)
 
     def test_fingerprints_survive_renaming_and_comment_removal(self):
         disguised = LLM_BFS
@@ -914,6 +965,18 @@ class _StreamWithoutClose:
     def read(self, size=None):
         data, self.data = self.data, b""
         return data
+
+
+class TestNewAnalysisVersion(LLMDetectTestCase):
+    def test_older_analysis_is_recomputed(self):
+        submission = self._submit(self.humans[0], self.pis[0], HUMAN_BFS, minutes=10)
+        assess_contest(self.contest)
+        self.assertFalse(needs_update(self.contest))
+        SubmissionFeatures.objects.filter(submission=submission).update(version=F.FEATURES_VERSION - 1)
+        self.assertTrue(needs_update(self.contest))
+        assess_contest(self.contest)
+        self.assertEqual(SubmissionFeatures.objects.get(submission=submission).version, F.FEATURES_VERSION)
+        self.assertFalse(needs_update(self.contest))
 
 
 class TestFiletrackerSources(LLMDetectTestCase):

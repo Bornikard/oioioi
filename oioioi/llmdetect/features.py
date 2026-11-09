@@ -12,7 +12,7 @@ import zlib
 from collections import Counter
 
 # Bump when the features or fingerprints change, so stored ones get recomputed.
-FEATURES_VERSION = 4
+FEATURES_VERSION = 5
 
 # Bounds on what is stored per submission, so that crafted code cannot make
 # its stored analysis (and the memory to assess a contest) large.
@@ -289,6 +289,8 @@ def extract_features(source, language):
     statements_per_line = [line.count(";") for line in nonblank if not line.lstrip().startswith("for")]
     counts = Counter(texts)
     has_main = "main" in counts
+    # std::x, not the std of "using namespace std".
+    std_prefixes = sum(1 for (kind, text), following in zip(tokens, tokens[1:], strict=False) if kind == "id" and text == "std" and following == ("op", "::"))
 
     features = {
         # Comments.
@@ -305,7 +307,7 @@ def extract_features(source, language):
         "short_ident_ratio": _ratio(sum(len(i) <= 2 for i in distinct), len(distinct)),
         "upper_ident_ratio": _ratio(sum(i.isupper() and len(i) > 1 for i in distinct), len(distinct)),
         # Idioms of competitive programmers and of LLMs.
-        "std_qualified_per_100": counts["std"] * per_100,
+        "std_qualified_per_100": std_prefixes * per_100,
         "using_namespace_std": float(bool(re.search(r"using\s+namespace\s+std", source))),
         "bits_header": float(any("bits/stdc++" in line for line in pp_lines)),
         "includes_per_100": sum(line.startswith("#include") for line in pp_lines) * per_100,

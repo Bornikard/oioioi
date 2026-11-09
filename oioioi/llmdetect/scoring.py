@@ -227,6 +227,9 @@ def needs_update(contest):
     config = get_config(contest)
     if config.dirty or config.computed_at is None:
         return True
+    # The analysis of the code changed (FEATURES_VERSION) since it was stored.
+    if SubmissionFeatures.objects.filter(submission__problem_instance__contest=contest).exclude(version=FEATURES_VERSION).exists():
+        return True
     return contest_submissions(contest).filter(id__gt=config.last_submission_id).exists()
 
 
@@ -268,7 +271,7 @@ def _item(submission, features, trusted=False, history=False):
         features=features,
         vector=style_vector(features.features),
         style=style,
-        style_reasons=reasons[:3],
+        style_reasons=reasons,
         fingerprints=set(features.fingerprints),
         habits=features.habits or {},
         trusted=trusted,
@@ -345,7 +348,10 @@ class ContestAssessor:
         self._similarity_signals()
         self._artifact_signals()
         for item in self.items:
-            item.signals["llm_style"] = (item.style, {"reasons": [name for name, contribution in item.style_reasons if contribution > 0]})
+            # Both sides, so that a low score is not explained by its few LLM-like features alone.
+            towards = [name for name, contribution in item.style_reasons if contribution > 0][:3]
+            against = [name for name, contribution in item.style_reasons if contribution < 0][:3]
+            item.signals["llm_style"] = (item.style, {"score": item.style, "reasons": towards, "against": against})
             reference = item.signals.get("llm_reference", (0.0, {}))[0]
             artifacts = max(item.signals.get(name, (0.0, {}))[0] for name in ("chat_leftovers", "paste_characters"))
             item.independent = max(reference, item.style, artifacts)

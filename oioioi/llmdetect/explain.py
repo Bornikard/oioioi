@@ -201,7 +201,15 @@ def describe(name, detail, users=None):
         return text
     if name == "llm_style":
         reasons = ", ".join(str(feature_label(reason)) for reason in d.get("reasons", []))
-        return gettext("Typical of LLM code: %(reasons)s.") % {"reasons": reasons} if reasons else ""
+        if "score" not in d:  # computed before the score was stored
+            return gettext("Typical of LLM code: %(reasons)s.") % {"reasons": reasons} if reasons else ""
+        parts = [gettext("LLM-likeness of the code: %(score)s.") % {"score": _percent(d["score"])}]
+        if reasons:
+            parts.append(gettext("Like LLM code: %(reasons)s.") % {"reasons": reasons})
+        against = ", ".join(str(feature_label(reason)) for reason in d.get("against", []))
+        if against:
+            parts.append(gettext("Unlike LLM code: %(reasons)s.") % {"reasons": against})
+        return " ".join(parts)
     if name == "style_shift":
         return gettext("Far from own style (z = %(z)s) and closer to LLM style (%(style)s, usually %(profile)s).") % {
             "z": _z(d.get("z", 0)),
