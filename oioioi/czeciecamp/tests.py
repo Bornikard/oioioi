@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -619,13 +619,30 @@ class TestCampPanel(CampTestCase):
     def _round_data(self, prefix, name, start, end="", is_trial=False):
         return {f"{prefix}-name": name, f"{prefix}-start_date": start, f"{prefix}-end_date": end, f"{prefix}-is_trial": str(is_trial)}
 
-    def test_panel_defaults_new_round_to_rounded_now(self):
+    def _new_round_initial(self, now=None):
         self.assertTrue(self.client.login(username="test_admin"))
-        with fake_time(datetime(2020, 8, 10, 9, 41, 30, tzinfo=UTC)):
+        with fake_time(now or _date(10)):
             response = self.client.get(self._url("czeciecamp_panel"))
-        form = response.context["new_round_form"]
-        self.assertEqual(form.initial["start_date"], datetime(2020, 8, 10, 9, 45, tzinfo=UTC))
-        self.assertEqual(form.initial["name"], "Day 3")
+        return response.context["new_round_form"].initial
+
+    def test_new_round_is_the_day_after_the_last_round(self):
+        initial = self._new_round_initial()
+        self.assertEqual((initial["start_date"], initial["end_date"]), (_date(3), _date(3, hour=5)))
+        self.assertEqual(initial["name"], "Day 3")
+
+    @override_settings(TIME_ZONE="Europe/Warsaw")
+    def test_new_round_keeps_local_time_across_dst(self):
+        # 20:00 in Warsaw: CEST before 25.10.2020, CET from that day on.
+        self.round2.start_date = datetime(2020, 10, 24, 18, 0, tzinfo=UTC)
+        self.round2.end_date = None
+        self.round2.save()
+        initial = self._new_round_initial()
+        self.assertEqual((initial["start_date"], initial["end_date"]), (datetime(2020, 10, 25, 19, 0, tzinfo=UTC), None))
+
+    def test_new_round_without_rounds_starts_at_rounded_now(self):
+        self.contest.round_set.all().delete()
+        initial = self._new_round_initial(datetime(2020, 8, 10, 9, 41, 30, tzinfo=UTC))
+        self.assertEqual(initial["start_date"], datetime(2020, 8, 10, 9, 45, tzinfo=UTC))
 
     def test_add_round(self):
         self.assertTrue(self.client.login(username="test_admin"))

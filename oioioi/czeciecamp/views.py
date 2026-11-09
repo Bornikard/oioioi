@@ -90,6 +90,23 @@ def _next_round_name(contest):
     return day_name(number)
 
 
+def _next_day(date):
+    """The same local time on the next day, also across a DST change."""
+    local = timezone.localtime(date).replace(tzinfo=None)
+    return timezone.make_aware(local + timedelta(days=1))
+
+
+def _new_round_dates(contest, now):
+    """The last round of the panel moved to the next day, or the rounded
+    current time if there are no rounds yet.
+    """
+    rounds = ordered_rounds(contest)
+    if not rounds:
+        return rounded_now(now), rounded_now(now)
+    last = rounds[-1]
+    return _next_day(last.start_date), _next_day(last.end_date) if last.end_date else None
+
+
 def _round_rows(contest, now):
     rows = []
     for round in ordered_rounds(contest):
@@ -184,6 +201,7 @@ def panel_view(request):
             raise PermissionDenied
 
     now = request.timestamp
+    new_round_start, new_round_end = _new_round_dates(contest, now)
     context = {
         "config": config,
         "llmdetect_enabled": "oioioi.llmdetect" in settings.INSTALLED_APPS and is_contest_admin(request),
@@ -199,8 +217,8 @@ def panel_view(request):
             html_form="new-round-form",
             initial={
                 "name": _next_round_name(contest),
-                "start_date": rounded_now(now),
-                "end_date": rounded_now(now),
+                "start_date": new_round_start,
+                "end_date": new_round_end,
             },
         ),
         "freeze_date": get_freeze_date(contest, config),
