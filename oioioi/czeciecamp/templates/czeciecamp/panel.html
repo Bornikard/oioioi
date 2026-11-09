@@ -32,7 +32,6 @@
             <th>{% trans "Start" %}</th>
             <th>{% trans "End" %}</th>
             <th>{% trans "Type" %}</th>
-            <th title="{% trans 'Counted in the rankings that have no rounds selected.' %}">{% trans "Counted" %}</th>
             <th title="{% trans 'Participants see the scores of their own submissions.' %}">{% trans "Personal results" %}</th>
             <th title="{% trans 'The round is shown in the rankings of participants.' %}">{% trans "In rankings" %}</th>
             <th></th>
@@ -51,7 +50,6 @@
                 <td>{{ form.start_date }}</td>
                 <td>{{ form.end_date }}</td>
                 <td>{{ form.is_trial }}</td>
-                <td class="text-center">{{ form.counted }}</td>
                 <td class="text-nowrap">
                     {% if config.results_visible_during_round %}
                     <span class="text-muted small">{% trans "always visible" %}</span>
@@ -62,7 +60,7 @@
                             <span class="text-success">✔</span>
                             <button type="submit" class="btn btn-link btn-sm p-0 ms-1">{% trans "hide" %}</button>
                         {% else %}
-                            {% if round.results_date %}<span class="text-muted small">{{ round.results_date|date:"d.m H:i" }}</span>{% endif %}
+                            {% if round.results_date %}<span class="text-muted small" title="{% trans 'Shown automatically at this time.' %}">{% blocktrans with date=round.results_date|date:"d.m H:i" %}auto {{ date }}{% endblocktrans %}</span>{% endif %}
                             <button type="submit" class="btn btn-sm btn-primary">{% trans "Show now" %}</button>
                         {% endif %}
                     </form>
@@ -75,7 +73,7 @@
                             <span class="text-success">✔</span>
                             <button type="submit" class="btn btn-link btn-sm p-0 ms-1">{% trans "hide" %}</button>
                         {% else %}
-                            {% if round.public_results_date %}<span class="text-muted small">{{ round.public_results_date|date:"d.m H:i" }}</span>{% endif %}
+                            {% if round.public_results_date %}<span class="text-muted small" title="{% trans 'Shown automatically at this time.' %}">{% blocktrans with date=round.public_results_date|date:"d.m H:i" %}auto {{ date }}{% endblocktrans %}</span>{% endif %}
                             <button type="submit" class="btn btn-sm btn-primary">{% trans "Publish" %}</button>
                         {% endif %}
                     </form>
@@ -90,7 +88,7 @@
             </tr>
             {% endwith %}
         {% empty %}
-            <tr><td colspan="9" class="text-muted">{% trans "No rounds yet." %}</td></tr>
+            <tr><td colspan="8" class="text-muted">{% trans "No rounds yet." %}</td></tr>
         {% endfor %}
         {% with form=new_round_form %}
         <tr class="table-light">
@@ -99,7 +97,6 @@
             <td>{{ form.start_date }}</td>
             <td>{{ form.end_date }}</td>
             <td>{{ form.is_trial }}</td>
-            <td class="text-center">{{ form.counted }}</td>
             <td colspan="3">
                 <form method="post" id="new-round-form" action="{% url 'czeciecamp_add_round' contest_id=contest.id %}">
                     {% csrf_token %}
@@ -186,7 +183,7 @@
                     {% if ranking.round_id %}
                         {% trans "this round" %}
                     {% elif not ranking.rounds.exists %}
-                        {% trans "all counted" %}
+                        {% trans "all" %}
                     {% else %}
                         {% for round in row.rounds %}{{ round.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
                     {% endif %}
@@ -198,7 +195,7 @@
                             <span class="text-success">✔</span>
                             <button type="submit" class="btn btn-link btn-sm p-0 ms-1">{% trans "hide" %}</button>
                         {% else %}
-                            {% if ranking.public_date %}<span class="text-muted small">{{ ranking.public_date|date:"d.m H:i" }}</span>{% endif %}
+                            {% if ranking.public_date %}<span class="text-muted small" title="{% trans 'Shown automatically at this time.' %}">{% blocktrans with date=ranking.public_date|date:"d.m H:i" %}auto {{ date }}{% endblocktrans %}</span>{% endif %}
                             <button type="submit" class="btn btn-sm btn-primary">{% trans "Show now" %}</button>
                         {% endif %}
                     </form>

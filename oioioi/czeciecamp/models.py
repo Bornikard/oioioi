@@ -48,9 +48,6 @@ class CzecieCampConfig(models.Model):
     # Round ids in the order set in the camp panel. Rounds missing from the
     # list (e.g. added in the admin) go last, by start date.
     round_order = models.JSONField(default=list, blank=True, verbose_name=_("round order"))
-    # Ids of rounds left out of the Daily, All-time and main rankings.
-    # They still have their own ranking.
-    excluded_rounds = models.JSONField(default=list, blank=True, verbose_name=_("rounds not counted"))
     # Ids of users who are participants, but are left out of all rankings
     # (e.g. remote participants, guests); admins still see them, greyed out.
     hidden_users = models.JSONField(default=list, blank=True, verbose_name=_("participants hidden in rankings"))
@@ -106,7 +103,7 @@ class CampRanking(models.Model):
         blank=True,
         related_name="+",
         verbose_name=_("rounds"),
-        help_text=_("None selected means all counted rounds."),
+        help_text=_("None selected means all rounds."),
     )
     daily_weight = models.IntegerField(default=1, verbose_name=_("daily weight"))
     stale_weight = models.IntegerField(default=1, verbose_name=_("all-time weight"))
@@ -161,8 +158,7 @@ class CampRanking(models.Model):
         selected = list(self.rounds.all())
         if selected:
             return ordered_rounds(self.contest, selected)
-        excluded = get_camp_config(self.contest).excluded_rounds
-        return ordered_rounds(self.contest, self.contest.round_set.exclude(id__in=excluded))
+        return ordered_rounds(self.contest)
 
 
 def medal_places(medals, participants):

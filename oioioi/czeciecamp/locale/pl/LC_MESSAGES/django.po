@@ -269,12 +269,6 @@ msgstr "Stała"
 msgid "Type"
 msgstr "Typ"
 
-msgid "Counted"
-msgstr "Liczona"
-
-msgid "Counted in the rankings that have no rounds selected."
-msgstr "Liczy się do rankingów, które nie mają wybranych rund."
-
 msgid "daily ranking weight"
 msgstr "waga rankingu dziennego"
 
@@ -291,9 +285,6 @@ msgstr ""
 msgid "At least one weight must be different from 0."
 msgstr "Co najmniej jedna waga musi być różna od 0."
 
-msgid "rounds not counted"
-msgstr "rundy nieliczone"
-
 msgid "name"
 msgstr "nazwa"
 
@@ -305,9 +296,6 @@ msgstr "ranking rundy"
 
 msgid "rounds"
 msgstr "rundy"
-
-msgid "None selected means all counted rounds."
-msgstr "Brak zaznaczonych oznacza wszystkie liczone rundy."
 
 msgid "daily weight"
 msgstr "waga dzienna"
@@ -347,9 +335,6 @@ msgstr "Widoczny"
 
 msgid "this round"
 msgstr "ta runda"
-
-msgid "all counted"
-msgstr "wszystkie liczone"
 
 msgid "Delete the ranking %(name)s?"
 msgstr "Usunąć ranking %(name)s?"
@@ -487,3 +472,16 @@ msgstr "Runda jest pokazywana uczestnikom w rankingach."
 
 msgid "Rankings are visible to participants, but a round appears in them (and gets its own ranking) only after you publish it in rankings. Publishing shows the personal results of the round too."
 msgstr "Rankingi są widoczne dla uczestników, ale runda pojawia się w nich (i dostaje własny ranking) dopiero po opublikowaniu jej w rankingach. Opublikowanie pokazuje też wyniki osobiste tej rundy."
+
+msgid "None selected means all rounds."
+msgstr "Brak zaznaczonych oznacza wszystkie rundy."
+
+msgid "all"
+msgstr "wszystkie"
+
+msgid "Shown automatically at this time."
+msgstr "Pokaże się automatycznie o tej godzinie."
+
+#, python-format
+msgid "auto %(date)s"
+msgstr "auto %(date)s"

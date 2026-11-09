@@ -90,7 +90,7 @@ def _next_round_name(contest):
     return day_name(number)
 
 
-def _round_rows(contest, config, now):
+def _round_rows(contest, now):
     rows = []
     for round in ordered_rounds(contest):
         rows.append(
@@ -100,7 +100,6 @@ def _round_rows(contest, config, now):
                     instance=round,
                     prefix=_round_prefix(round),
                     html_form=ROUNDS_FORM_ID,
-                    counted=round.id not in config.excluded_rounds,
                 ),
                 "results_visible": round.results_date is not None and round.results_date <= now,
                 "in_rankings": round_in_rankings(round, now),
@@ -192,7 +191,7 @@ def panel_view(request):
         "participants_form": participants_form,
         "participants": Participant.objects.filter(contest=contest).select_related("user").order_by("user__last_name", "user__first_name"),
         "hidden_users": set(config.hidden_users),
-        "rounds": _round_rows(contest, config, now),
+        "rounds": _round_rows(contest, now),
         "rankings": _ranking_rows(contest, now),
         "ranking_moves": [("up", "▲", _("Move up")), ("down", "▼", _("Move down"))],
         "new_round_form": RoundForm(
@@ -270,8 +269,6 @@ def add_round_view(request):
         round.save()
         config = get_camp_config(contest)
         config.round_order = [r.id for r in ordered_rounds(contest)]
-        if not form.cleaned_data["counted"]:
-            config.excluded_rounds.append(round.id)
         config.save()
         Ranking.invalidate_contest(contest)
         messages.success(request, _("Added %(name)s.") % {"name": round.name})
@@ -298,15 +295,9 @@ def save_rounds_view(request):
     order = [int(i) for i in request.POST.getlist("order") if i.isdigit() and int(i) in rounds]
     with transaction.atomic():
         config = get_camp_config(contest)
-        excluded = set(config.excluded_rounds)
         for form in forms:
             form.save()
             _update_round_ranking(form)
-            if form.cleaned_data["counted"]:
-                excluded.discard(form.instance.id)
-            else:
-                excluded.add(form.instance.id)
-        config.excluded_rounds = sorted(excluded)
         config.round_order = order + [r.id for r in ordered_rounds(contest) if r.id not in order]
         config.save()
     Ranking.invalidate_contest(contest)
@@ -352,7 +343,6 @@ def delete_round_view(request, round_id):
     round.delete()
     config = get_camp_config(request.contest)
     config.round_order = [r for r in config.round_order if r != round_id]
-    config.excluded_rounds = [r for r in config.excluded_rounds if r != round_id]
     config.save()
     Ranking.invalidate_contest(request.contest)
     messages.success(request, _("Deleted %(name)s.") % {"name": name})

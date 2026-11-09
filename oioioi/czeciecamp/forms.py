@@ -60,15 +60,13 @@ class RoundForm(BootstrapFormMixin, forms.ModelForm):
         coerce=lambda value: value == "True",
         label=_("Type"),
     )
-    counted = forms.BooleanField(required=False, initial=True, label=_("Counted"))
 
     class Meta:
         model = Round
         fields = ["name", "start_date", "end_date", "is_trial"]
 
-    def __init__(self, *args, html_form=None, counted=True, **kwargs):
+    def __init__(self, *args, html_form=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["counted"].initial = counted
         if html_form:
             for field in self.fields.values():
                 field.widget.attrs["form"] = html_form

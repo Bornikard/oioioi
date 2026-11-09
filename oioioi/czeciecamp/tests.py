@@ -384,19 +384,6 @@ class TestCampRankings(CampTestCase):
         Round.objects.create(contest=other, name="R", start_date=_date(0))
         self.assertFalse(CampRanking.objects.filter(contest=other).exists())
 
-    def test_round_not_counted(self):
-        self._submit(self.user1, self.pi1, _date(1, hour=1), 50)
-        self._submit(self.user1, self.pi2, _date(2, hour=1), 70)
-        config = get_camp_config(self.contest)
-        config.excluded_rounds = [self.round2.id]
-        config.save()
-        for ranking in (self.main, self.stale, self.daily):
-            data = self._ranking(ranking)
-            self.assertNotIn(self.pi2, [pi for pi, _visible in data["problem_instances"]])
-        self.assertEqual(self._row(self._ranking(self.daily), self.user1)["sum"], 50)
-        self.assertEqual(self._row(self._ranking(self._round_ranking(self.round2)), self.user1)["sum"], 70)
-        self.assertIn(str(self._round_ranking(self.round2).id), [key for key, _name in self._available_rankings()])
-
 
 class TestCampFreeze(CampTestCase):
     def test_freeze(self):
@@ -479,6 +466,14 @@ class TestCampPanel(CampTestCase):
         self.assertIsNone(self.round2.results_date)
         # Hiding personal results takes the round out of rankings too.
         self.assertIsNone(self.round2.public_results_date)
+
+    def test_scheduled_dates_are_labelled(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        with fake_time(_date(2)):
+            response = self.client.get(self._url("czeciecamp_panel"))
+        self.assertContains(response, "auto 03.08 14:00")
+        self.assertContains(response, "auto 03.08 15:00")
+        self.assertNotContains(response, "Counted")
 
     def test_round_ranking_buttons(self):
         self.assertTrue(self.client.login(username="test_admin"))
@@ -621,11 +616,8 @@ class TestCampPanel(CampTestCase):
         self.assertContains(response, "more than one user")
         self.assertFalse(Participant.objects.filter(contest=self.contest, user__username="namesake").exists())
 
-    def _round_data(self, prefix, name, start, end="", is_trial=False, counted=True):
-        data = {f"{prefix}-name": name, f"{prefix}-start_date": start, f"{prefix}-end_date": end, f"{prefix}-is_trial": str(is_trial)}
-        if counted:
-            data[f"{prefix}-counted"] = "on"
-        return data
+    def _round_data(self, prefix, name, start, end="", is_trial=False):
+        return {f"{prefix}-name": name, f"{prefix}-start_date": start, f"{prefix}-end_date": end, f"{prefix}-is_trial": str(is_trial)}
 
     def test_panel_defaults_new_round_to_rounded_now(self):
         self.assertTrue(self.client.login(username="test_admin"))
@@ -647,25 +639,6 @@ class TestCampPanel(CampTestCase):
         self.assertTrue(new_round.is_trial)
         self.assertEqual(new_round.results_date, new_round.start_date)
         self.assertEqual(new_round.public_results_date, new_round.start_date)
-        self.assertNotIn(new_round.id, get_camp_config(self.contest).excluded_rounds)
-
-    def test_add_round_not_counted(self):
-        self.assertTrue(self.client.login(username="test_admin"))
-        self.client.post(self._url("czeciecamp_add_round"), self._round_data("new", "Extra", "2020-08-04T09:00", "2020-08-04T14:00", counted=False))
-        new_round = Round.objects.get(contest=self.contest, name="Extra")
-        self.assertFalse(new_round.is_trial)
-        self.assertEqual(self._round_ranking(new_round).name, "Extra")
-        self.assertEqual(get_camp_config(self.contest).excluded_rounds, [new_round.id])
-
-    def test_save_rounds_counted(self):
-        self.assertTrue(self.client.login(username="test_admin"))
-        data = self._all_rounds_data([self.trial, self.round1, self.round2])
-        data.pop(f"r{self.round1.id}-counted")
-        self.client.post(self._url("czeciecamp_save_rounds"), data)
-        self.assertEqual(get_camp_config(self.contest).excluded_rounds, [self.round1.id])
-        data[f"r{self.round1.id}-counted"] = "on"
-        self.client.post(self._url("czeciecamp_save_rounds"), data)
-        self.assertEqual(get_camp_config(self.contest).excluded_rounds, [])
 
     def test_settings(self):
         self.assertTrue(self.client.login(username="test_admin"))
