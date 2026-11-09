@@ -118,7 +118,7 @@ in [0, 1]; counts are per 100 non-blank lines.
 | Comments | `comment_ratio` | comments per non-blank line (max 1) |
 | | `prose_comment_ratio` | share of comments that are prose: ≥3 words, letters ≥60% of the text, no code inside |
 | | `sentence_comment_ratio` | share of comments that are sentences: prose, ≥4 words, starting with a capital |
-| | `english_comment_ratio` | share of words in prose comments that are common English code words ("the", "compute", "initialize", "edges", ...) |
+| | `english_comment_ratio` | share of words in prose comments that are common English code words ("the", "compute", "initialize", "edges", ...; words that are Polish too, like "a", "to", "we", "na", are left out) |
 | | `commented_code_ratio` | share of comments containing code (`;` at the end, `cout`, `for (`, a call, an assignment) |
 | | `comment_words_per_100` | words in comments |
 | Identifiers | `ident_mean_length` | mean length of identifier uses (keywords and library names excluded) |
@@ -161,6 +161,11 @@ competitive code. Each feature is divided by a cap and clipped to [0, 1]:
 llm_style = sigmoid(-2.0 + Σ weight · clip(feature / cap, 0, 1))
 ```
 
+Only features that set LLM code apart from code taught at school are used:
+`return 0;` and spaces around operators are what teachers teach, so they do
+not count (they are still part of the style vector, compared with the
+author's own habits).
+
 | Weight | Feature | Cap |
 |---:|---|---:|
 | +1.6 | sentence_comment_ratio | 0.5 |
@@ -171,8 +176,6 @@ llm_style = sigmoid(-2.0 + Σ weight · clip(feature / cap, 0, 1))
 | +0.8 | std_qualified_per_100 | 10 |
 | +0.5 | reference_params_per_100 | 3 |
 | +0.4 | const_per_100 | 6 |
-| +0.3 | return_zero | 1 |
-| +0.3 | spaced_operator_ratio | 1 |
 | −0.8 | using_namespace_std | 1 |
 | −0.8 | bits_header | 1 |
 | −0.8 | defines_per_100 | 4 |
@@ -314,7 +317,10 @@ reasons, fingerprints, habits, supervised flag, score fraction, and:
 - **score fraction**: points / max points, clipped to [0, 1]; without a
   maximum, points / 100.
 - **start time**: when the participant could start working on the problem:
-  the round start, or the first time they opened the statement if later.
+  the round start. Only if the setting *count time from opening the
+  statement* is on (statements read in SIO2, not on paper), the first time
+  they opened the statement, if later: with paper statements the first
+  opening is late or never, and honest participants would look fast.
 
 ### 5.2 Boilerplate
 
@@ -404,7 +410,14 @@ threshold = max(0.35, baseline + 0.15)
 value     = clip((sim − threshold) / max(0.9 − threshold, 0.05), 0, 1)
 ```
 Solutions of one problem share code anyway, so this is relative to how close
-participants usually get. `specific` = fingerprints without boilerplate.
+participants usually get. `specific` = fingerprints without boilerplate and
+without the author's **personal code**: fingerprints that also occur in their
+submissions to other problems (here or in earlier contests), i.e. their own
+template and library; participants of one school share templates, which says
+nothing about copying. A **confirmed** reference (section 10) is not compared
+with the submission it comes from, nor with code sent **before** it: the
+confirmed cheater may have copied an honest participant, whose earlier code
+must not match "an LLM solution".
 
 **`llm_style`** — the LLM-style score of 4.3, as it is.
 
@@ -447,8 +460,20 @@ weighted submissions:
   strength = clip(ln(1 / rate) / 3, 0, 1)
   strength = min(1, 1.3 · strength)  if the change is towards an LLM value (and always for template/macros)
              0.6 · strength          otherwise
-  value    = 1 − Π(1 − 0.8 · strength) over the broken habits
   ```
+- **Groups.** Habits that change together count as one change per group:
+  *formatting* (indent, braces, else, spaces after keywords, around operators
+  and after commas, line endings), which an editor's auto-format or another
+  computer changes all at once; *template* (template, macros, includes,
+  namespace, long long alias, fast IO, main), which another computer without
+  the usual template changes at once; and *structure* (arrays, size
+  constant, test loop, naming, function names). Formatting is weak evidence
+  and weighs 0.6:
+  ```
+  group = min(1, strongest + 0.25 · (sum of the others)) · (0.6 for formatting, else 1)
+  value = 1 − Π over groups (1 − 0.8 · group)
+  ```
+  A reformatted solution alone stays below 0.48, far from a flag.
 
 **`vocabulary`** — unfamiliar names. With a history of ≥3 and ≥4 current names
 (≥2 characters): `overlap` = share of current names the author used before.
@@ -481,8 +506,13 @@ score ≥ 0.9.
 
 **`fast_solve`** *(r)* — the first submission with ≥50% of the points, ≥15 code
 lines, came much faster than others' (≥4 others):
-`value = clip((0.5·median − minutes) / (0.5·median), 0, 1)` — half the median
-time or less starts counting.
+`base = clip((0.5·median − minutes) / (0.5·median), 0, 1)` — half the median
+time or less starts counting. Being fast means little for someone who is
+always fast, so it is compared with the participant's own pace: `rank` = the
+share of the others they were faster than on this problem (with ≥5 solvers),
+`usual` = the median of their ranks on other problems (≥2 of them):
+`value = base · clip((rank − usual) / 0.4, 0, 1)`, or `base / 2` while their
+pace is not known.
 
 **`score_surprise`** *(r)* — the first submission with ≥50% of the points
 scored ≥90% on a problem that fewer than half solved, by a participant who is
@@ -491,7 +521,9 @@ weak on the other problems (≥5 participants):
 `value = clip((1 − strength) · (1 − solve_rate) / 0.5, 0, 1)`.
 
 **`first_try`** *(r)* — full score at the first submission on a problem that
-fewer than 30% solved (≥5 tried): `value = 1 − solve_rate / 0.3`.
+fewer than 30% solved (≥5 tried), weighed by how weak the participant is on
+the other problems (strong participants solve hard problems at once):
+`value = (1 − solve_rate / 0.3) · (1 − strength)`.
 
 ### Other participants
 
@@ -524,6 +556,12 @@ risk = sigmoid(−3.0 + Σ weight_s · value_s)
 | pasted | 0.5 |
 | first_try | 0.3 |
 
+**After the round** its solutions are discussed, and rewriting the presented
+solution is not cheating: in submissions sent after their round, the signals
+comparing with the author's own style (`style_shift`, `deviation`,
+`habit_break`, `vocabulary`) count half; direct evidence (LLM reference, chat
+leftovers, pasted characters) counts fully.
+
 With no signals the risk is sigmoid(−3) ≈ 5%. A submission is **flagged** at
 risk ≥ 0.5, i.e. when the weighted sum reaches 3 (e.g. a strong LLM reference
 match alone, or a habit break plus LLM style). Signals can only raise the risk,
@@ -555,8 +593,23 @@ another problem).
 The strongest signal needs solutions written by LLMs for each problem,
 collected **before** the round. The server never calls an LLM:
 
-1. **Prompts.** For each problem, the statement text (from its PDF / HTML /
-   zip / txt, editable by the staff) with one of five instructions, imitating
+1. **Statement text.** Read once per problem and stored, then checked and
+   edited by the staff (the prompts of all problems use the stored texts):
+   - first from the **LaTeX source in the Sinol package** (`doc/<id>zad.tex`),
+     the best source: the math stays as LaTeX, which LLMs read exactly
+     (`$1 \le c \le 10^9$`); sections, `\sinolSName…` names (both versions
+     of `sinol.cls`), tables (as Markdown) and examples (`\makeexample`,
+     `\makecompactexample{0}`, filled in from `in/<id>0.in` and
+     `out/<id>0.out` of the package) become plain text; comments, the contest
+     name and the date are left out, so they do not leave the camp; pictures
+     and unknown commands are reported;
+   - else from the **statement file**: PDF (`pdftext.py`: text rebuilt from
+     the characters and their positions, so that exponents and indices stay
+     `10^9`, `a_{i−1}` instead of `109`, `ai−1`; examples keep their two
+     columns; the symbols of the `polski` package's fonts and the Polish
+     letters of bitmap T1 fonts are fixed), HTML, a zip of them, or text.
+     Reading a PDF is reported as to be checked (formulas, examples, tables).
+2. **Prompts.** The statement text with one of five instructions, imitating
    how participants ask:
    - *plain*: "Solve this competitive programming problem in C++. Read the
      input from standard input and write the output to standard output."
@@ -567,7 +620,7 @@ collected **before** the round. The server never calls an LLM:
      bits/stdc++.h, using namespace std, macros, fast IO, global arrays";
    - *disguised*: "...then make the code look hand-written: rename the
      variables, remove all comments and do not explain anything".
-2. **Generating.** By hand (copy a prompt into any chat) or with a standalone
+3. **Generating.** By hand (copy a prompt into any chat) or with a standalone
    script (`tools/llm_references.py`, Python standard library only) run by the
    staff with their own API keys. It reads a prompts file
    (`{"format": "llmdetect-prompts/1", "prompts": [{"problem", "prompt",
@@ -575,7 +628,7 @@ collected **before** the round. The server never calls an LLM:
    providers) and Claude, round-robin within each provider's `min_interval`
    and `daily_limit`, backs off on HTTP 429, writes answers as they come and
    continues where it stopped when run again.
-3. **Bulk format** to paste or upload many answers at once:
+4. **Bulk format** to paste or upload many answers at once (on the page, one field takes a single chat answer, several in this format, or files):
    ```
    ### reference problem=abc model="ChatGPT free" prompt=student
    <code, or a whole chat answer: only its longest ``` code block (C++ or untagged) is kept>
@@ -621,7 +674,11 @@ the participant for a whole-contest disqualification).
   command (`llmdetect_update CONTEST...`, e.g. from cron). Settings,
   references, decisions and rejudging mark the contest dirty.
 - **Statement views** are recorded by a middleware (first view per user and
-  problem).
+  problem); they only count when the setting *count time from opening the
+  statement* is on.
+- **Statement texts** are read when the references page of a problem is first
+  opened (or prompts of all problems are downloaded), stored, and read again
+  only on request.
 - **After the camp**, `llmdetect_purge CONTEST` deletes the data and keeps the
   decisions anonymized (no participant, reviewer or note) for calibration.
 
@@ -642,8 +699,9 @@ Participants control the code, so:
 
 ## 13. What is tied to SIO2
 
-Pure and portable as they are: `features.py`, `habits.py` (no Django) and the
-logic of `scoring.py`. To port the rest, replace:
+Pure and portable as they are: `features.py`, `habits.py`, `pdftext.py` (no
+Django) and the logic of `scoring.py` and of `latex_statement` in
+`statements.py`. To port the rest, replace:
 
 | In SIO2 | Replace with |
 |---|---|
@@ -654,7 +712,7 @@ logic of `scoring.py`. To port the rest, replace:
 | staff = `ContestPermission` holders and superusers | your notion of staff |
 | `ProblemViewMiddleware` (statement views) | a log of when each participant opened each problem |
 | scores as `IntegerScore`, `max_score` | a number and its maximum |
-| statements from SIO2 problem packages (`query_statement`) | statement text from wherever you keep it |
+| statement texts from Sinol packages (`ProblemPackage`) and statement files (`query_statement`), in `statements.py` | statement text from wherever you keep it; `latex_statement` and `pdftext.pdf_text` are pure and portable |
 | Django views, templates, translations, admin permissions | your UI |
 | disqualification module, camp ranking | your ranking |
 

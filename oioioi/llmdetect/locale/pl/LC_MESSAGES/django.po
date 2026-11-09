@@ -127,6 +127,18 @@ msgid "function names"
 msgstr "nazwy funkcji"
 
 msgctxt "llmdetect"
+msgid "Template"
+msgstr "Szablon"
+
+msgctxt "llmdetect"
+msgid "Formatting"
+msgstr "Formatowanie"
+
+msgctxt "llmdetect"
+msgid "Structure of the code"
+msgstr "Struktura kodu"
+
+msgctxt "llmdetect"
 msgid "separate headers"
 msgstr "osobne nagłówki"
 
@@ -382,25 +394,28 @@ msgstr "%(width)s spacje"
 msgid "%(habit)s: kept %(share)s of the usual lines (%(usual)s)"
 msgstr "%(habit)s: zostało %(share)s zwykłych wierszy (%(usual)s)"
 
+msgid "Counted half: sent after the round, when the solutions are discussed."
+msgstr "Liczone w połowie: wysłane po rundzie, gdy rozwiązania są już omawiane."
+
 #, python-format
 msgid "%(similarity)s of the code matches an LLM reference (participants usually: %(baseline)s)."
 msgstr "%(similarity)s kodu pokrywa się z referencją LLM (u uczestników zwykle: %(baseline)s)."
 
 #, python-format
-msgid "Far from own style (z = %(z)s) and closer to LLM style (%(style)s, usually %(profile)s)."
-msgstr "Daleko od własnego stylu (z = %(z)s) i bliżej stylu LLM (%(style)s, zwykle %(profile)s)."
+msgid "Far from own style (z = %(z)s, compared with how far others strayed from theirs on this problem) and closer to LLM style (%(style)s, usually %(profile)s)."
+msgstr "Daleko od własnego stylu (z = %(z)s, w porównaniu z tym, jak daleko od swojego stylu odeszli inni w tym zadaniu) i bliżej stylu LLM (%(style)s, zwykle %(profile)s)."
 
 #, python-format
-msgid "Far from own style (z = %(z)s), profile confidence %(confidence)s."
-msgstr "Daleko od własnego stylu (z = %(z)s), pewność profilu %(confidence)s."
+msgid "Far from own style (z = %(z)s, compared with how far others strayed from theirs on this problem), profile confidence %(confidence)s."
+msgstr "Daleko od własnego stylu (z = %(z)s, w porównaniu z tym, jak daleko od swojego stylu odeszli inni w tym zadaniu), pewność profilu %(confidence)s."
 
 #, python-format
 msgid "Solved after %(minutes).0f min; others needed %(median).0f min (median)."
 msgstr "Rozwiązane po %(minutes).0f min; inni potrzebowali %(median).0f min (mediana)."
 
 #, python-format
-msgid "%(lines)d new lines in %(minutes).0f min."
-msgstr "%(lines)d nowych wierszy w %(minutes).0f min."
+msgid "%(lines)d new lines %(minutes).0f min after the previous submission."
+msgstr "%(lines)d nowych wierszy %(minutes).0f min po poprzednim zgłoszeniu."
 
 #, python-format
 msgid "Only %(similarity)s in common with the previous, failed version."
@@ -434,6 +449,19 @@ msgstr "%(similarity)s wspólne ze zgłoszeniem: %(user)s."
 msgid "LLM-likeness of the code: %(score)s."
 msgstr "Podobieństwo kodu do kodu LLM: %(score)s."
 
+msgid "Own usual pace not known yet, so counted half."
+msgstr "Zwykłe tempo uczestnika nie jest jeszcze znane, więc liczone w połowie."
+
+#, python-format
+msgid "%(lines)d lines in the first submission, %(minutes).0f min after the start."
+msgstr "%(lines)d wierszy w pierwszym zgłoszeniu, %(minutes).0f min od początku."
+
+msgid "Details in the habits table below."
+msgstr "Szczegóły w tabeli nawyków poniżej."
+
+msgid "Formatting changes together when an editor formats the code or on another computer: it counts once, and weakly."
+msgstr "Formatowanie zmienia się naraz, gdy edytor sformatuje kod albo na innym komputerze: liczy się raz i słabo."
+
 #, python-format
 msgid "Model: %(model)s."
 msgstr "Model: %(model)s."
@@ -450,53 +478,46 @@ msgstr "Jak w kodzie LLM: %(reasons)s."
 msgid "Unlike LLM code: %(reasons)s."
 msgstr "Inaczej niż w kodzie LLM: %(reasons)s."
 
+#, python-format
+msgid "Faster than %(rank)s of the others here; usually faster than %(usual)s."
+msgstr "Tu szybciej niż %(rank)s pozostałych; zwykle szybciej niż %(usual)s."
+
+#, python-format
+msgid "On other problems better than %(strength)s of participants."
+msgstr "W pozostałych zadaniach lepszy niż %(strength)s uczestników."
+
 msgid "A confirmed submission becomes an LLM reference of its problem."
 msgstr "Potwierdzone zgłoszenie staje się referencją LLM swojego zadania."
-
-msgid "Problem"
-msgstr "Zadanie"
-
-msgid "Model"
-msgstr "Model"
-
-msgid "Prompt"
-msgstr "Prompt"
-
-msgid "Files"
-msgstr "Pliki"
-
-msgid "Or paste code"
-msgstr "Albo wklej kod"
-
-msgid "A whole chat answer can be pasted: only its code block is kept."
-msgstr "Można wkleić całą odpowiedź z czatu: zostanie tylko blok kodu."
 
 msgid "Statement in the prompts"
 msgstr "Treść w promptach"
 
-msgid "The prompts are this text with a short instruction. Check it, and remove anything that must not be sent to an LLM."
-msgstr "Prompty to ten tekst z krótkim poleceniem. Sprawdź go i usuń wszystko, czego nie wolno wysłać do LLM."
+msgid "The prompts are this text after a short instruction. Check the limits and the examples, and remove anything that must not leave the camp."
+msgstr "Prompty to ten tekst poprzedzony krótkim poleceniem. Sprawdź ograniczenia i przykłady, i usuń wszystko, co nie może wyjść poza obóz."
 
-msgid "Prompts"
-msgstr "Prompty"
+msgid "Prompts to download"
+msgstr "Prompty do pobrania"
 
-msgid "Paste"
-msgstr "Wklej"
+msgid "Answers"
+msgstr "Odpowiedzi"
 
-msgid "Or upload a file"
-msgstr "Albo wyślij plik"
+msgid "A whole chat answer (only its code is kept) or code. Many answers at once: start each with a \"### reference\" line, as the script writes them."
+msgstr "Cała odpowiedź z czatu (zostaje tylko kod) albo sam kod. Wiele odpowiedzi naraz: każdą zacznij wierszem „### reference”, tak jak zapisuje je skrypt."
 
-msgid "Problem for entries without problem="
-msgstr "Zadanie dla wpisów bez problem="
+msgid "Or upload files"
+msgstr "Albo wyślij pliki"
 
-msgid "Choose files or paste code."
-msgstr "Wybierz pliki albo wklej kod."
+msgid "Model"
+msgstr "Model"
 
-msgid "Paste the references or choose a file."
-msgstr "Wklej referencje albo wybierz plik."
+msgid "E.g. ChatGPT free, Gemini 3 Flash."
+msgstr "Np. ChatGPT free, Gemini 3 Flash."
 
-msgid "The file is too large."
-msgstr "Plik jest za duży."
+msgid "Prompt"
+msgstr "Prompt"
+
+msgid "Paste an answer or choose files."
+msgstr "Wklej odpowiedź albo wybierz pliki."
 
 #, python-format
 msgid "%(name)s is too large."
@@ -532,6 +553,12 @@ msgstr "waga wcześniejszych konkursów"
 
 msgid "Weight of a submission from an earlier contest in a profile, compared with one from this contest written on the same day (1)."
 msgstr "Waga zgłoszenia z wcześniejszego konkursu w profilu, w porównaniu ze zgłoszeniem z tego konkursu wysłanym tego samego dnia (1)."
+
+msgid "count time from opening the statement"
+msgstr "licz czas od otwarcia treści"
+
+msgid "Only when participants read the statements in SIO2: with paper statements the first opening is late or never, and participants would look fast. Otherwise time counts from the start of the round."
+msgstr "Tylko gdy uczestnicy czytają treści w SIO2: przy treściach na papierze pierwsze otwarcie jest późno albo wcale i uczestnicy wyglądaliby na szybkich. W przeciwnym razie czas liczy się od początku rundy."
 
 msgid "generated by the staff"
 msgstr "wygenerowane przez kadrę"
@@ -610,6 +637,43 @@ msgstr "Wiersz %(line)d: brak zadania %(problem)s w tym konkursie."
 msgid "Line %(line)d: no problem given, and no default problem chosen."
 msgstr "Wiersz %(line)d: nie podano zadania i nie wybrano domyślnego."
 
+msgid "No statement found for this problem."
+msgstr "To zadanie nie ma treści."
+
+msgid "The statement has pictures; describe them in the text if they matter."
+msgstr "Treść ma rysunki; opisz je w tekście, jeśli są ważne."
+
+msgid "The text is very short; the statement may be a scan or a picture."
+msgstr "Tekst jest bardzo krótki; treść może być skanem albo obrazkiem."
+
+msgid "Some characters could not be read (shown as ?)."
+msgstr "Części znaków nie udało się odczytać (widać je jako ?)."
+
+msgid "Read from the PDF: check the formulas, the examples and the tables."
+msgstr "Odczytane z PDF: sprawdź wzory, przykłady i tabele."
+
+#, python-format
+msgid "The statement could not be read: %(error)s"
+msgstr "Nie udało się odczytać treści: %(error)s"
+
+msgid "picture"
+msgstr "rysunek"
+
+#, python-format
+msgid "Unknown LaTeX commands left in the text: %(commands)s."
+msgstr "W tekście zostały nieznane polecenia LaTeX-a: %(commands)s."
+
+msgid "The statement file is too large."
+msgstr "Plik z treścią jest za duży."
+
+#, python-format
+msgid "Example %(name)s was not found in the package; add it to the text."
+msgstr "W paczce nie ma przykładu %(name)s; dopisz go do tekstu."
+
+#, python-format
+msgid "example %(name)s"
+msgstr "przykład %(name)s"
+
 msgid "LLM detection"
 msgstr "Wykrywanie LLM"
 
@@ -628,8 +692,14 @@ msgstr "Zapisano ustawienia."
 msgid "Invalid settings."
 msgstr "Niepoprawne ustawienia."
 
+msgid "The statement was read again."
+msgstr "Treść została odczytana ponownie."
+
 msgid "Solution not written by yourself"
 msgstr "Rozwiązanie napisane niesamodzielnie"
+
+msgid "The statement was saved."
+msgstr "Treść została zapisana."
 
 #, python-format
 msgid "Submission #%(id)s (%(problem)s) was not written by you, so the problem counts 0."
@@ -645,12 +715,12 @@ msgstr "Otwarcie treści"
 msgid "Added %(count)d references."
 msgstr "Dodano referencje: %(count)d."
 
+msgid "Choose the prompts to download."
+msgstr "Wybierz prompty do pobrania."
+
 #, python-format
 msgid "Skipped %(count)d already stored."
 msgstr "Pominięto już zapisane: %(count)d."
-
-msgid "Could not read the statement of this problem; paste its text."
-msgstr "Nie udało się odczytać treści zadania; wklej jej tekst."
 
 msgid "Recompute"
 msgstr "Przelicz"
@@ -703,14 +773,17 @@ msgstr "Nie ma jeszcze zgłoszeń."
 msgid "Settings"
 msgstr "Ustawienia"
 
+msgid "You administer no other contests."
+msgstr "Nie administrujesz innymi konkursami."
+
 msgid "Save"
 msgstr "Zapisz"
 
 msgid "Participants ordered by how much their code looks generated by an LLM. A high score is a reason to talk with the participant (for example: \"explain this part\"), never a proof by itself."
 msgstr "Uczestnicy według tego, jak bardzo ich kod wygląda na wygenerowany przez LLM. Wysoki wynik to powód do rozmowy z uczestnikiem (np. „wytłumacz ten fragment”), nigdy sam w sobie dowód."
 
-msgid "Problem statement views are not logged, so the timing signals count from the start of the round. Add <code>oioioi.llmdetect.middleware.ProblemViewMiddleware</code> to <code>MIDDLEWARE</code> to log them."
-msgstr "Otwarcia treści zadań nie są zapisywane, więc sygnały czasowe liczą się od początku tury. Dodaj <code>oioioi.llmdetect.middleware.ProblemViewMiddleware</code> do <code>MIDDLEWARE</code>, żeby je zapisywać."
+msgid "Time should count from opening the statement, but statement views are not logged, so it counts from the start of the round. Add <code>oioioi.llmdetect.middleware.ProblemViewMiddleware</code> to <code>MIDDLEWARE</code> to log them."
+msgstr "Czas ma się liczyć od otwarcia treści, ale otwarcia treści nie są zapisywane, więc liczy się od początku rundy. Dodaj <code>oioioi.llmdetect.middleware.ProblemViewMiddleware</code> do <code>MIDDLEWARE</code>, żeby je zapisywać."
 
 #, python-format
 msgid "Analysed %(analysed)s of %(counted)s submissions by participants."
@@ -748,59 +821,80 @@ msgstr[0] "Oraz %(counter)s konkurs wybrany przez innego administratora, którym
 msgstr[1] "Oraz %(counter)s konkursy wybrane przez innego administratora, którymi nie administrujesz."
 msgstr[2] "Oraz %(counter)s konkursów wybranych przez innego administratora, którymi nie administrujesz."
 
-msgid "Load statement"
-msgstr "Wczytaj treść"
+msgid "This contest has no problems yet."
+msgstr "Ten konkurs nie ma jeszcze zadań."
 
-msgid "Copy a prompt to paste into a chat:"
-msgstr "Skopiuj prompt do wklejenia w czacie:"
+msgid "Problems"
+msgstr "Zadania"
 
-msgid "Then paste the whole answer below; only its code is kept."
-msgstr "Potem wklej całą odpowiedź poniżej; zostanie tylko kod."
+msgid "Statement checked"
+msgstr "Treść sprawdzona"
+
+msgid "Statement not checked yet"
+msgstr "Treść jeszcze niesprawdzona"
+
+msgid "Check the statement"
+msgstr "Sprawdź treść"
+
+msgid "Read from the LaTeX source in the problem package: the formulas are as the authors wrote them."
+msgstr "Odczytane ze źródła LaTeX w paczce zadania: wzory są takie, jak je zapisali autorzy."
+
+msgid "Read from the statement file."
+msgstr "Odczytane z pliku z treścią."
+
+msgid "Edited by the staff."
+msgstr "Poprawione przez kadrę."
+
+msgid "checked"
+msgstr "sprawdzona"
+
+msgid "not checked yet"
+msgstr "jeszcze niesprawdzona"
+
+msgid "Paste the statement text here: it could not be read."
+msgstr "Wklej tu tekst treści: nie udało się go odczytać."
+
+msgid "Save the statement"
+msgstr "Zapisz treść"
+
+msgid "Your changes to the text will be lost. Read it again?"
+msgstr "Twoje zmiany w tekście przepadną. Odczytać treść ponownie?"
+
+msgid "Read it again from the problem"
+msgstr "Odczytaj ponownie z zadania"
+
+msgid "Ask LLMs"
+msgstr "Zapytaj LLM-y"
+
+msgid "Copy a prompt (the instruction and the statement above, with your unsaved changes) and paste it into a chat:"
+msgstr "Skopiuj prompt (polecenie i treść powyżej, z niezapisanymi zmianami) i wklej go do czatu:"
 
 msgid "What the prompts say"
 msgstr "Co mówią prompty"
 
-msgid "Download these prompts for the script"
-msgstr "Pobierz te prompty dla skryptu"
+msgid "Or download the prompts for the script, which asks many models with your API keys:"
+msgstr "Albo pobierz prompty dla skryptu, który pyta wiele modeli z Twoimi kluczami API:"
 
-msgid "Download prompts of all problems"
-msgstr "Pobierz prompty wszystkich zadań"
+msgid "Save the statement and download these prompts"
+msgstr "Zapisz treść i pobierz te prompty"
 
-msgid "Download the script"
-msgstr "Pobierz skrypt"
+msgid "Nothing was added; fix it and add again."
+msgstr "Nic nie zostało dodane; popraw i dodaj ponownie."
 
-msgid "How to use the script"
-msgstr "Jak używać skryptu"
-
-msgid "Download the script and a prompts file (all problems use the statements as read from their files; check them first, or download problem by problem with the statement edited above)."
-msgstr "Pobierz skrypt i plik z promptami („wszystkie zadania” używa treści odczytanych z plików; najpierw je sprawdź albo pobieraj zadanie po zadaniu z treścią poprawioną powyżej)."
-
-msgid "Create the configuration, then fill in your API keys as environment variables and the models you want:"
-msgstr "Utwórz konfigurację, potem ustaw klucze API jako zmienne środowiskowe i wpisz wybrane modele:"
-
-msgid "Check the model names:"
-msgstr "Sprawdź nazwy modeli:"
-
-msgid "Run it (here 2 answers per model and prompt):"
-msgstr "Uruchom (tu 2 odpowiedzi na model i prompt):"
-
-msgid "Upload the references.txt it writes under Add many. Out of quota or interrupted, run the same command again later: it goes on where it stopped."
-msgstr "Wyślij zapisany przez niego references.txt w „Dodaj wiele”. Gdy skończy się limit albo przerwiesz, uruchom to samo polecenie później: skrypt zacznie tam, gdzie skończył."
-
-msgid "Add many"
-msgstr "Dodaj wiele"
-
-msgid "Nothing was added; fix the text and add it again."
-msgstr "Nic nie dodano; popraw tekst i dodaj go ponownie."
+msgid "Model and prompt are labels of a pasted answer; in the bulk format they are on each ### reference line. Code already stored for the problem is skipped."
+msgstr "Model i prompt to opisy wklejonej odpowiedzi; w formacie zbiorczym są w każdym wierszu ### reference. Kod, który już jest zapisany dla zadania, jest pomijany."
 
 msgid "Add"
 msgstr "Dodaj"
 
-msgid "Large outputs: upload the file rather than pasting it."
-msgstr "Duże wyniki: wyślij plik zamiast wklejać."
+msgid "The bulk format"
+msgstr "Format zbiorczy"
 
-msgid "Add one"
-msgstr "Dodaj jedno"
+msgid "Each answer starts with a ### reference line and goes on until the next one. Without problem=, it is for this problem."
+msgstr "Każda odpowiedź zaczyna się wierszem ### reference i trwa do następnego. Bez problem= jest dla tego zadania."
+
+msgid "lines"
+msgstr "wierszy"
 
 msgid "Delete this reference?"
 msgstr "Usunąć tę referencję?"
@@ -811,18 +905,52 @@ msgstr "usuń"
 msgid "No references yet."
 msgstr "Nie ma jeszcze referencji."
 
+msgid "All problems at once, with the script"
+msgstr "Wszystkie zadania naraz, skryptem"
+
+msgid "Download prompts of all problems"
+msgstr "Pobierz prompty wszystkich zadań"
+
+msgid "Download the script"
+msgstr "Pobierz skrypt"
+
+msgid "Once: create the configuration, then put your API keys in environment variables and choose the models:"
+msgstr "Raz: utwórz konfigurację, potem wpisz klucze API do zmiennych środowiskowych i wybierz modele:"
+
+msgid "Check the model names:"
+msgstr "Sprawdź nazwy modeli:"
+
+msgid "Run it (here 2 answers per model and prompt):"
+msgstr "Uruchom (tu 2 odpowiedzi na model i prompt):"
+
+msgid "Upload the references.txt it writes in step 3 of any problem: each answer goes to its own problem. Out of quota or interrupted, run the same command again later: it goes on where it stopped."
+msgstr "Wyślij zapisany przez niego references.txt w kroku 3 dowolnego zadania: każda odpowiedź trafi do swojego zadania. Po wyczerpaniu limitu albo przerwaniu uruchom to samo polecenie później: skrypt kontynuuje tam, gdzie skończył."
+
+msgid "The statement is empty: paste it first."
+msgstr "Treść jest pusta: najpierw ją wklej."
+
 msgctxt "llmdetect"
 msgid "Copied"
 msgstr "Skopiowano"
 
-msgid "Before the round, get tens of solutions per problem from the models participants use and with prompts that imitate them. Keep wrong solutions too: their mistakes are a strong fingerprint. Only problem statements go to external models, never participants' code."
-msgstr "Przed turą zbierz kilkadziesiąt rozwiązań każdego zadania z modeli, których używają uczestnicy, i z promptów, które ich udają. Zachowuj też błędne rozwiązania: ich pomyłki to wyraźny odcisk palca. Do zewnętrznych modeli trafiają tylko treści zadań, nigdy kod uczestników."
+msgid "Solutions written by LLMs for each problem: the strongest signal. Before the round, get tens per problem from the models participants use, with the prompts below. Keep wrong solutions too. This server never asks any LLM: only statements leave the camp, from your own computer."
+msgstr "Rozwiązania napisane przez LLM dla każdego zadania: najmocniejszy sygnał. Przed rundą zbierz po kilkadziesiąt na zadanie z modeli, których używają uczestnicy, z promptami poniżej. Zachowuj też błędne rozwiązania. Ten serwer nigdy sam nie pyta żadnego LLM: poza obóz wychodzą tylko treści, z Twojego komputera."
 
-msgid "This server never asks any LLM itself. Copy a prompt into a chat, or download the prompts for the script and run it on your computer with your own API keys; then add the answers below."
-msgstr "Ten serwer sam nigdy nie pyta żadnego LLM. Skopiuj prompt do czatu albo pobierz prompty dla skryptu i uruchom go na swoim komputerze z własnymi kluczami API; potem dodaj odpowiedzi poniżej."
+#, python-format
+msgid "Add the answers for %(problem)s"
+msgstr "Dodaj odpowiedzi dla %(problem)s"
 
-msgid "Each reference starts with a line like the ones below and goes on until the next one. The script writes this format; it is easy to write by hand too. A whole chat answer can follow the line: only its code is kept. Code already stored for the problem is skipped."
-msgstr "Każda referencja zaczyna się wierszem jak poniżej i trwa do następnego takiego wiersza. Skrypt zapisuje ten format; łatwo go też pisać ręcznie. Po wierszu może być cała odpowiedź z czatu: zostanie tylko kod. Kod już zapisany dla zadania jest pomijany."
+msgid "%(counter)s reference for %(problem)s"
+msgid_plural "%(counter)s references for %(problem)s"
+msgstr[0] "%(counter)s referencja dla %(problem)s"
+msgstr[1] "%(counter)s referencje dla %(problem)s"
+msgstr[2] "%(counter)s referencji dla %(problem)s"
+
+msgid "The statement of %(counter)s problem is not checked yet; its prompts use the text as read."
+msgid_plural "The statements of %(counter)s problems are not checked yet; their prompts use the text as read."
+msgstr[0] "Treść %(counter)s zadania nie jest jeszcze sprawdzona; jego prompty używają tekstu w odczytanej postaci."
+msgstr[1] "Treści %(counter)s zadań nie są jeszcze sprawdzone; ich prompty używają tekstu w odczytanej postaci."
+msgstr[2] "Treści %(counter)s zadań nie są jeszcze sprawdzone; ich prompty używają tekstu w odczytanej postaci."
 
 msgid "Submission"
 msgstr "Zgłoszenie"
@@ -892,6 +1020,9 @@ msgstr "Brak zgłoszeń do innych zadań."
 
 msgid "Submissions"
 msgstr "Zgłoszenia"
+
+msgid "Problem"
+msgstr "Zadanie"
 
 msgid "Date"
 msgstr "Data"

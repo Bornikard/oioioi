@@ -3,7 +3,7 @@ from django.utils.translation import gettext_lazy as _
 
 from oioioi.contests.models import Contest, ProblemInstance
 from oioioi.llmdetect.models import LLMDetectConfig, ReviewDecision
-from oioioi.llmdetect.prompts import PROMPTS, code_of_chat_answer
+from oioioi.llmdetect.prompts import HEADER_RE, PROMPTS, code_of_chat_answer
 
 MAX_REFERENCE_SIZE = 256 * 1024
 
@@ -37,7 +37,7 @@ def administered_contests(user, exclude):
 class SettingsForm(forms.ModelForm):
     class Meta:
         model = LLMDetectConfig
-        fields = ["trusted_rounds", "history_contests", "history_weight"]
+        fields = ["trusted_rounds", "history_contests", "history_weight", "time_from_statement"]
         widgets = {"trusted_rounds": forms.CheckboxSelectMultiple, "history_contests": forms.CheckboxSelectMultiple}
 
     def __init__(self, *args, contest, user, **kwargs):
@@ -61,43 +61,15 @@ class SettingsForm(forms.ModelForm):
         return config
 
 
-class ReferenceForm(forms.Form):
-    problem_instance = forms.ModelChoiceField(queryset=ProblemInstance.objects.none(), label=_("Problem"))
-    model_name = forms.CharField(max_length=100, required=False, label=_("Model"))
-    prompt_variant = forms.CharField(max_length=100, required=False, label=_("Prompt"))
-    files = MultipleFileField(required=False, label=_("Files"))
-    code = forms.CharField(
-        widget=forms.Textarea(attrs={"rows": 6, "class": "font-monospace"}),
-        required=False,
-        label=_("Or paste code"),
-        help_text=_("A whole chat answer can be pasted: only its code block is kept."),
-    )
-
-    def __init__(self, *args, contest, **kwargs):
-        super().__init__(*args, **kwargs)
-        problems = ProblemInstance.objects.filter(contest=contest).select_related("round")
-        self.fields["problem_instance"].queryset = problems.order_by("round__start_date", "short_name")
-
-    def clean(self):
-        cleaned = super().clean()
-        sources = []
-        for file in cleaned.get("files") or []:
-            if file.size > MAX_REFERENCE_SIZE:
-                raise forms.ValidationError(_("%(name)s is too large.") % {"name": file.name})
-            sources.append((file.name, code_of_chat_answer(file.read().decode("utf-8", "replace"))))
-        if cleaned.get("code", "").strip():
-            sources.append(("solution.cpp", code_of_chat_answer(cleaned["code"])))
-        if not sources:
-            raise forms.ValidationError(_("Choose files or paste code."))
-        cleaned["sources"] = sources
-        return cleaned
-
-
 class DecisionForm(forms.ModelForm):
     class Meta:
         model = ReviewDecision
         fields = ["verdict", "submission", "note"]
-        widgets = {"note": forms.Textarea(attrs={"rows": 2})}
+        widgets = {
+            "verdict": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "submission": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "note": forms.Textarea(attrs={"rows": 2, "class": "form-control form-control-sm"}),
+        }
 
     def __init__(self, *args, submissions, **kwargs):
         super().__init__(*args, **kwargs)
@@ -107,25 +79,25 @@ class DecisionForm(forms.ModelForm):
         self.fields["submission"].help_text = _("A confirmed submission becomes an LLM reference of its problem.")
 
 
-def _problems(contest):
+def problems_of(contest):
     return ProblemInstance.objects.filter(contest=contest).select_related("round").order_by("round__start_date", "short_name")
 
 
-class PromptsForm(forms.Form):
-    """The statement of a problem, checked by the staff, for the prompts."""
+class StatementForm(forms.Form):
+    """The statement of a problem, checked by the staff, and the prompts to download."""
 
-    problem_instance = forms.ModelChoiceField(queryset=ProblemInstance.objects.none(), label=_("Problem"))
-    statement = forms.CharField(
-        widget=forms.Textarea(attrs={"rows": 12, "class": "font-monospace small"}),
+    text = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 18, "class": "form-control font-monospace small", "spellcheck": "false"}),
         label=_("Statement in the prompts"),
-        help_text=_("The prompts are this text with a short instruction. Check it, and remove anything that must not be sent to an LLM."),
+        help_text=_(
+            "The prompts are this text after a short instruction. Check the limits and the examples, and remove anything that must not leave the camp."
+        ),
         max_length=60000,
     )
-    prompts = forms.MultipleChoiceField(widget=forms.CheckboxSelectMultiple, label=_("Prompts"))
+    prompts = forms.MultipleChoiceField(widget=forms.CheckboxSelectMultiple, label=_("Prompts to download"), required=False)
 
-    def __init__(self, *args, contest, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["problem_instance"].queryset = _problems(contest)
         self.fields["prompts"].choices = [(key, label) for key, (label, _instruction) in PROMPTS.items()]
         self.fields["prompts"].initial = list(PROMPTS)
 
@@ -133,43 +105,65 @@ class PromptsForm(forms.Form):
 MAX_BULK_SIZE = 20 * 1024 * 1024
 
 
-class BulkReferencesForm(forms.Form):
-    """Many references at once, in the bulk format (see prompts.py)."""
+class AnswersForm(forms.Form):
+    """Answers of LLMs for one problem: a chat answer or code pasted as it
+    is, files, or many answers in the bulk format (see prompts.py), which
+    may also name other problems.
+    """
 
     text = forms.CharField(
-        widget=forms.Textarea(attrs={"rows": 10, "class": "font-monospace small"}),
+        widget=forms.Textarea(attrs={"rows": 10, "class": "form-control font-monospace small", "spellcheck": "false"}),
         required=False,
-        label=_("Paste"),
+        label=_("Answers"),
         strip=False,
+        help_text=_(
+            'A whole chat answer (only its code is kept) or code. Many answers at once: start each with a "### reference" line, as the script writes them.'
+        ),
     )
-    file = forms.FileField(required=False, label=_("Or upload a file"))
-    default_problem = forms.ModelChoiceField(
-        queryset=ProblemInstance.objects.none(),
-        required=False,
-        label=_("Problem for entries without problem="),
-    )
+    files = MultipleFileField(required=False, label=_("Or upload files"))
+    model_name = forms.CharField(max_length=100, required=False, label=_("Model"), help_text=_("E.g. ChatGPT free, Gemini 3 Flash."))
+    prompt_variant = forms.ChoiceField(required=False, label=_("Prompt"))
 
-    def __init__(self, *args, contest, **kwargs):
+    def __init__(self, *args, contest, problem_instance, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["default_problem"].queryset = _problems(contest)
-        self.problems = {pi.short_name: pi for pi in _problems(contest)}
+        self.problem_instance = problem_instance
+        self.problems = {pi.short_name: pi for pi in problems_of(contest)}
+        self.fields["prompt_variant"].choices = [("", "–")] + [(key, label) for key, (label, _instruction) in PROMPTS.items()]
 
-    def clean(self):
+    def _answer(self, text, filename):
         from oioioi.llmdetect.prompts import parse_references
 
+        if HEADER_RE.search(text):
+            return parse_references(text, self.problems, self.problem_instance)
+        source = code_of_chat_answer(text).strip("\n") + "\n"
+        if len(source) > MAX_REFERENCE_SIZE:
+            return [], [_("%(name)s is too large.") % {"name": filename}]
+        reference = {
+            "problem_instance": self.problem_instance,
+            "model": self.cleaned_data.get("model_name", ""),
+            "prompt": self.cleaned_data.get("prompt_variant", ""),
+            "source": source,
+            "filename": filename,
+        }
+        return [reference], []
+
+    def clean(self):
         cleaned = super().clean()
-        parts = []
-        upload = cleaned.get("file")
-        if upload:
+        references, errors = [], []
+        for upload in cleaned.get("files") or []:
             if upload.size > MAX_BULK_SIZE:
-                raise forms.ValidationError(_("The file is too large."))
-            parts.append(upload.read().decode("utf-8", "replace"))
+                errors.append(_("%(name)s is too large.") % {"name": upload.name})
+                continue
+            found, problems = self._answer(upload.read().decode("utf-8", "replace"), upload.name)
+            references += found
+            errors += [f"{upload.name}: {error}" for error in problems]
         if (cleaned.get("text") or "").strip():
-            parts.append(cleaned["text"])
-        if not parts:
-            raise forms.ValidationError(_("Paste the references or choose a file."))
-        references, errors = parse_references("\n".join(parts), self.problems, cleaned.get("default_problem"))
+            found, problems = self._answer(cleaned["text"], "solution.cpp")
+            references += found
+            errors += problems
         if errors:
             raise forms.ValidationError(errors[:20] + ([_("…and %(count)d more errors.") % {"count": len(errors) - 20}] if len(errors) > 20 else []))
+        if not references:
+            raise forms.ValidationError(_("Paste an answer or choose files."))
         cleaned["references"] = references
         return cleaned
