@@ -25,9 +25,15 @@ class ProblemUploadForm(forms.Form):
 
         if contest and not existing_problem:
             choices = [(r.id, r.name) for r in contest.round_set.all()]
-            if len(choices) >= 2:
+            # Some contests let a problem wait without a round, hidden from participants.
+            allow_no_round = choices and getattr(contest.controller, "allow_problems_without_round", False)
+            if len(choices) >= 2 or allow_no_round:
+                field = forms.ChoiceField(choices=choices, label=_("Round"), initial=choices[0][0])
+                if allow_no_round:
+                    field.choices = [("", _("— no round (hidden from participants) —"))] + choices
+                    field.required = False
                 fields = list(self.fields.items())
-                fields[0:0] = [("round_id", forms.ChoiceField(choices=choices, label=_("Round")))]
+                fields[0:0] = [("round_id", field)]
                 self.fields = OrderedDict(fields)
             elif len(choices) == 1:
                 self.round_id = choices[0][0]
@@ -61,6 +67,8 @@ class ProblemUploadForm(forms.Form):
         cleaned_data = super().clean()
         if self.round_id:
             cleaned_data["round_id"] = self.round_id
+        elif cleaned_data.get("round_id") == "":
+            cleaned_data["round_id"] = None
         if self.visibility:
             cleaned_data["visibility"] = self.visibility
         return cleaned_data

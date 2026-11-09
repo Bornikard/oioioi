@@ -99,3 +99,6 @@ msgstr "konfiguracja języków konkursu"
 
 msgid "contest languages configurations"
 msgstr "konfiguracje języków konkursu"
+
+msgid "— no round (hidden from participants) —"
+msgstr "— bez rundy (ukryte przed uczestnikami) —"

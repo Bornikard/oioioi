@@ -1079,3 +1079,40 @@ class TestRejudgeReport(CampTestCase):
         self.assertNotContains(self.client.get(changelist), self.url)
         self._start_rejudge()
         self.assertContains(self.client.get(changelist), self.url)
+
+
+class TestUploadWithoutRound(CampTestCase):
+    def test_form_offers_no_round(self):
+        from oioioi.problems.forms import ProblemUploadForm
+
+        form = ProblemUploadForm(self.contest, None, data={"round_id": ""})
+        self.assertEqual(form.fields["round_id"].choices[0][0], "")
+        self.assertEqual(form.fields["round_id"].initial, self.trial.id)
+        self.assertTrue(form.is_valid())
+        self.assertIsNone(form.cleaned_data["round_id"])
+        form = ProblemUploadForm(self.contest, None, data={"round_id": str(self.round1.id)})
+        self.assertTrue(form.is_valid())
+        self.assertEqual(int(form.cleaned_data["round_id"]), self.round1.id)
+
+    def test_other_contests_need_a_round(self):
+        from oioioi.problems.forms import ProblemUploadForm
+
+        other = Contest.objects.create(id="other", name="Other", controller_name="oioioi.programs.controllers.ProgrammingContestController")
+        for name in ("A", "B"):
+            Round.objects.create(contest=other, name=name, start_date=_date(0))
+        form = ProblemUploadForm(other, None, data={"round_id": ""})
+        self.assertNotIn("", [value for value, _label in form.fields["round_id"].choices])
+        self.assertFalse(form.is_valid())
+
+    def test_problem_instance_without_round(self):
+        from oioioi.problems.handlers import update_problem_instance
+
+        problem = self.pi1.problem
+        ProblemInstance.objects.create(problem=problem, contest=None, round=None, short_name="main")
+        problem.main_problem_instance = ProblemInstance.objects.get(problem=problem, contest=None)
+        problem.save()
+        self.pi1.delete()
+        env = update_problem_instance({"problem_id": problem.id, "contest_id": self.contest.id, "round_id": None, "is_reupload": False})
+        pi = ProblemInstance.objects.get(id=env["problem_instance_id"])
+        self.assertEqual(pi.contest, self.contest)
+        self.assertIsNone(pi.round)
