@@ -112,19 +112,23 @@
                     <tr id="{{ pi.get_short_name_display }}">
                         <td>{{ pi.get_short_name_display }}</td>
                         <td>
-                            {% if statement_visible %}
-                                {% url 'problem_statement' contest_id=contest.id problem_instance=pi.short_name as link %}
-                                <a href="{{ link }}">{{ pi.problem.name }}</a>
-                            {% else %}
-                                {{ pi.problem.name }}
-                            {% endif %}
-                            {% if show_status %}
-                                {% if last_submission and last_submission.can_see_status %}
-                                    <a href="{{ last_submission.link }}">
-                                        <span class="badge {{ last_submission.badge_class }}" title="{{ last_submission.submission.date|naturaltime }} ({{ last_submission.submission.date|date:'Y-m-d H:i:s' }})">{{ last_submission.message }}</span>
-                                    </a>
+                            <div class="d-flex justify-content-between align-items-center gap-2">
+                                <span>
+                                    {% if statement_visible %}
+                                        {% url 'problem_statement' contest_id=contest.id problem_instance=pi.short_name as link %}
+                                        <a href="{{ link }}">{{ pi.problem.name }}</a>
+                                    {% else %}
+                                        {{ pi.problem.name }}
+                                    {% endif %}
+                                </span>
+                                {% if show_status %}
+                                    {% if last_submission and last_submission.can_see_status %}
+                                        <a href="{{ last_submission.link }}" class="text-nowrap">
+                                            <span class="badge {{ last_submission.badge_class }}" title="{{ last_submission.submission.date|naturaltime }} ({{ last_submission.submission.date|date:'Y-m-d H:i:s' }})">{{ last_submission.message }}</span>
+                                        </a>
+                                    {% endif %}
                                 {% endif %}
-                            {% endif %}
+                            </div>
                         </td>
 
                         {% if show_editorials %}
