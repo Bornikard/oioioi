@@ -4598,6 +4598,59 @@ class TestAPIProblemSubmissionList(TestCase):
         self.assertEqual(json_data["submissions"][0]["status"], "OK")
 
 
+class TestAPIHiddenProblems(APITestCase):
+    """The API shows only what the website shows: no problems of future
+    rounds, nor problems without a round."""
+
+    fixtures = [
+        "test_users",
+        "test_contest",
+        "test_full_package",
+        "test_problem_instance",
+        "test_submission",
+    ]
+
+    def setUp(self):
+        super().setUp()
+        self.contest = Contest.objects.get()
+        self.pi = ProblemInstance.objects.get(pk=1)
+        # The submission list and problem id endpoints look up Problem.short_name.
+        self.pi.short_name = self.pi.problem.short_name
+        self.future = Round.objects.create(contest=self.contest, name="Future", start_date=datetime(2100, 1, 1, tzinfo=UTC))
+        self.pi.round = self.future
+        self.pi.save()
+
+    def _get(self, username, name, *args):
+        self.client.force_authenticate(user=User.objects.get(username=username))
+        return self.client.get(reverse(name, args=(self.contest.id, *args)))
+
+    def test_future_round_is_hidden(self):
+        self.assertEqual(self._get("test_user", "api_problem_list").json(), [])
+        self.assertNotIn("Future", [r["name"] for r in self._get("test_user", "api_round_list").json()])
+        self.assertEqual(self._get("test_user", "api_contest_get_problem_id", self.pi.short_name).status_code, 404)
+        self.assertEqual(self._get("test_user", "api_user_problem_submission_list", self.pi.short_name).status_code, 404)
+
+    def test_admin_sees_future_round(self):
+        self.assertEqual([p["id"] for p in self._get("test_admin", "api_problem_list").json()], [self.pi.id])
+        self.assertIn("Future", [r["name"] for r in self._get("test_admin", "api_round_list").json()])
+        self.assertEqual(self._get("test_admin", "api_contest_get_problem_id", self.pi.short_name).status_code, 200)
+
+    def test_problem_visible_once_round_starts(self):
+        self.future.start_date = datetime(2000, 1, 1, tzinfo=UTC)
+        self.future.save()
+        self.assertEqual([p["id"] for p in self._get("test_user", "api_problem_list").json()], [self.pi.id])
+        self.assertEqual(self._get("test_user", "api_user_problem_submission_list", self.pi.short_name).status_code, 200)
+
+    def test_problem_without_round_is_hidden(self):
+        self.pi.round = None
+        self.pi.save()
+        for username in ("test_user", "test_admin"):
+            response = self._get(username, "api_problem_list")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), [])
+        self.assertEqual(self._get("test_user", "api_contest_get_problem_id", self.pi.short_name).status_code, 404)
+
+
 class TestAPIProblemSubmissionCode(TestCase):
     fixtures = [
         "test_users",

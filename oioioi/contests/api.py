@@ -25,6 +25,7 @@ from oioioi.contests.utils import (
     get_problem_statements,
     visible_contests,
     visible_contests_as_django_queryset,
+    visible_problem_instances,
 )
 from oioioi.default_settings import MIDDLEWARE
 from oioioi.problems.models import Problem, ProblemInstance
@@ -39,6 +40,16 @@ def contest_list(request):
     contests = visible_contests(request)
     serializer = ContestSerializer(contests, many=True)
     return Response(serializer.data)
+
+
+def get_visible_problem_instance_or_404(request, contest, problem_short_name):
+    """The problem instance with the given short name, or 404 also when the
+    user may not see it, so that hidden problems cannot be discovered.
+    """
+    problem_instance = get_object_or_404(ProblemInstance, contest=contest, problem__short_name=problem_short_name)
+    if not contest.controller.can_see_problem(request, problem_instance):
+        raise Http404("Problem not found.")
+    return problem_instance
 
 
 class CanEnterContest(permissions.BasePermission):
@@ -65,7 +76,8 @@ class GetContestRounds(views.APIView):
     )
     def get(self, request, contest_id):
         contest = get_object_or_404(Contest, id=contest_id)
-        rounds = contest.round_set.all()
+        # Future rounds (and rounds hidden by the contest type) stay hidden, as on the website.
+        rounds = [r for r in contest.round_set.all() if contest.controller.can_see_round(request, r)]
         serializer = RoundSerializer(rounds, many=True)
         return Response(serializer.data)
 
@@ -81,7 +93,9 @@ class GetContestProblems(views.APIView):
     def get(self, request, contest_id):
         contest: Contest = get_object_or_404(Contest, id=contest_id)
         controller = contest.controller
-        problem_instances = ProblemInstance.objects.filter(contest=request.contest).select_related("problem").prefetch_related("round")
+        # Only problems the user may see, as on the website: not those of future
+        # (or otherwise hidden) rounds, nor problems without a round.
+        problem_instances = visible_problem_instances(request)
 
         # Problem statements in order
         # 0) problem instance
@@ -133,7 +147,7 @@ class GetUserProblemSubmissionList(views.APIView):
     )
     def get(self, request, contest_id, problem_short_name):
         contest = get_object_or_404(Contest, id=contest_id)
-        problem_instance = get_object_or_404(ProblemInstance, contest=contest, problem__short_name=problem_short_name)
+        problem_instance = get_visible_problem_instance_or_404(request, contest, problem_short_name)
 
         user_problem_submits = (
             Submission.objects.filter(user=request.user, problem_instance=problem_instance)
@@ -230,7 +244,7 @@ class GetProblemIdView(views.APIView):
         contest and short name of that problem.
         """
         contest = get_object_or_404(Contest, id=contest_id)
-        problem_instance = get_object_or_404(ProblemInstance, contest=contest, problem__short_name=problem_short_name)
+        problem_instance = get_visible_problem_instance_or_404(request, contest, problem_short_name)
         problem = problem_instance.problem
         response_data = {
             "problem_id": problem.id,
