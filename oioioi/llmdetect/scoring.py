@@ -59,6 +59,9 @@ DEFAULT_WEIGHTS = {
     "vocabulary": 1.0,
 }
 BIAS = -3.0
+# After a round its solutions are discussed, and rewriting the presented one
+# is not cheating: signals comparing with the author's own style count half.
+AFTER_ROUND_HALVED = frozenset({"style_shift", "deviation", "habit_break", "vocabulary"})
 # Submissions at or above this risk are flagged.
 FLAG_THRESHOLD = 0.5
 # How many submissions the population prior of a profile is worth.
@@ -77,6 +80,15 @@ PROFILE_PER_PROBLEM = 3
 HISTORY_PER_USER = 40
 # A user's risk is the sum of their this many worst problems.
 USER_TOP_PROBLEMS = 3
+# Habits that change together: an editor that formats the code changes all
+# of "formatting" at once, another computer without the usual template all of
+# "template". Formatting is weak evidence: editors and camp computers differ.
+HABIT_GROUP = {
+    **dict.fromkeys(("template", "macros", "includes", "namespace", "ll_alias", "fast_io", "main"), "template"),
+    **dict.fromkeys(("indent", "braces", "else", "keyword_space", "operator_space", "comma_space", "line_endings"), "formatting"),
+    **dict.fromkeys(("storage", "size_constant", "test_loop", "naming", "function_names"), "structure"),
+}
+HABIT_GROUP_WEIGHT = {"template": 1.0, "formatting": 0.6, "structure": 1.0}
 # A habit counts when kept in this share of at least this many other submissions.
 HABIT_STABILITY = 0.8
 HABIT_MIN_HISTORY = 3
@@ -227,6 +239,9 @@ def needs_update(contest):
     config = get_config(contest)
     if config.dirty or config.computed_at is None:
         return True
+    # The analysis of the code changed (FEATURES_VERSION) since it was stored.
+    if SubmissionFeatures.objects.filter(submission__problem_instance__contest=contest).exclude(version=FEATURES_VERSION).exists():
+        return True
     return contest_submissions(contest).filter(id__gt=config.last_submission_id).exists()
 
 
@@ -268,7 +283,7 @@ def _item(submission, features, trusted=False, history=False):
         features=features,
         vector=style_vector(features.features),
         style=style,
-        style_reasons=reasons[:3],
+        style_reasons=reasons,
         fingerprints=set(features.fingerprints),
         habits=features.habits or {},
         trusted=trusted,
@@ -334,7 +349,8 @@ class ContestAssessor:
             self.by_user[item.user_id].append(item)
             self.by_pi[item.pi_id].append(item)
         self.history_weight = self.config.history_weight
-        self.profile_pool = self._profile_pools(self._history_items())
+        self.history = self._history_items()
+        self.profile_pool = self._profile_pools(self.history)
         contests = [self.contest.id, *self.config.history_contests.values_list("id", flat=True)]
         self.confirmed = set(
             ReviewDecision.objects.filter(contest__in=contests, verdict=ReviewDecision.VERDICT_CONFIRMED, submission__isnull=False).values_list(
@@ -345,7 +361,10 @@ class ContestAssessor:
         self._similarity_signals()
         self._artifact_signals()
         for item in self.items:
-            item.signals["llm_style"] = (item.style, {"reasons": [name for name, contribution in item.style_reasons if contribution > 0]})
+            # Both sides, so that a low score is not explained by its few LLM-like features alone.
+            towards = [name for name, contribution in item.style_reasons if contribution > 0][:3]
+            against = [name for name, contribution in item.style_reasons if contribution < 0][:3]
+            item.signals["llm_style"] = (item.style, {"score": item.style, "reasons": towards, "against": against})
             reference = item.signals.get("llm_reference", (0.0, {}))[0]
             artifacts = max(item.signals.get(name, (0.0, {}))[0] for name in ("chat_leftovers", "paste_characters"))
             item.independent = max(reference, item.style, artifacts)
@@ -364,8 +383,14 @@ class ContestAssessor:
     # Time when the participant could start working on a problem: the
     # start of its round, or the first time they opened the statement.
     def _set_start_times(self):
-        events = ProblemViewEvent.objects.filter(problem_instance__contest=self.contest)
-        views = {(user_id, pi_id): date for user_id, pi_id, date in events.values_list("user_id", "problem_instance_id", "date")}
+        """When the participant could start working on each problem: the start
+        of its round, or (if the setting says statements are read in SIO2)
+        the first time they opened the statement, if later.
+        """
+        views = {}
+        if self.config.time_from_statement:
+            events = ProblemViewEvent.objects.filter(problem_instance__contest=self.contest)
+            views = {(user_id, pi_id): date for user_id, pi_id, date in events.values_list("user_id", "problem_instance_id", "date")}
         for item in self.items:
             round = item.submission.problem_instance.round
             start = round.start_date if round is not None else None
@@ -374,10 +399,30 @@ class ContestAssessor:
                 start = viewed
             item.start = start
 
+    def _personal_code(self):
+        """Per participant and problem, the fingerprints of the code they also
+        wrote for other problems (here or in earlier contests): their own
+        template and library, which says nothing about copying.
+        """
+        per_problem = defaultdict(lambda: defaultdict(set))
+        for item in self.items:
+            per_problem[item.user_id][item.problem_id] |= item.fingerprints
+        for user_id, items in self.history.items():
+            for item in items:
+                per_problem[user_id][item.problem_id] |= item.fingerprints
+        personal = {}
+        for user_id, problems in per_problem.items():
+            counts = Counter(f for prints in problems.values() for f in prints)
+            for problem_id, prints in problems.items():
+                # Present for another problem too.
+                personal[user_id, problem_id] = {f for f in prints if counts[f] > 1}
+        return personal
+
     def _similarity_signals(self):
         references = defaultdict(list)
-        for reference in LLMReferenceSolution.objects.filter(problem_instance__contest=self.contest):
+        for reference in LLMReferenceSolution.objects.filter(problem_instance__contest=self.contest).select_related("submission"):
             references[reference.problem_instance_id].append(reference)
+        personal = self._personal_code()
         for pi_id, items in self.by_pi.items():
             users = {item.user_id for item in items}
             common = Counter()
@@ -388,8 +433,12 @@ class ContestAssessor:
             if len(users) >= 5:
                 boilerplate = {f for f, count in common.items() if count > BOILERPLATE_FRACTION * len(users)}
             for item in items:
-                specific = item.fingerprints - boilerplate
-                item.specific = specific if len(specific) >= 5 else item.fingerprints
+                # Without boilerplate, and without the author's own template.
+                item.specific = item.fingerprints
+                for removed in (boilerplate, personal.get((item.user_id, item.problem_id), set())):
+                    specific = item.specific - removed
+                    if len(specific) >= 5:
+                        item.specific = specific
             self._peer_similarity(items)
             self._reference_similarity(items, references.get(pi_id, []), boilerplate)
 
@@ -426,8 +475,19 @@ class ContestAssessor:
             reference_prints.append((reference, specific if len(specific) >= 5 else prints))
         best = {}
         for item in items:
-            similarity, reference = max(((containment(item.specific, prints), reference) for reference, prints in reference_prints), key=lambda pair: pair[0])
+            # A confirmed case may have been copied from an honest participant:
+            # code sent before it (and the case itself) is not compared with it.
+            usable = [
+                (reference, prints)
+                for reference, prints in reference_prints
+                if reference.submission_id is None or (reference.submission_id != item.submission.id and item.date >= reference.submission.date)
+            ]
+            if not usable:
+                continue
+            similarity, reference = max(((containment(item.specific, prints), reference) for reference, prints in usable), key=lambda pair: pair[0])
             best[item] = (similarity, reference)
+        if not best:
+            return
         # Solutions of the same problem share some code anyway; compare with
         # how close participants usually get (most of them write their own).
         per_user = defaultdict(float)
@@ -572,10 +632,23 @@ class ContestAssessor:
             row["strength"] = strength
         for item in self.items:
             broken = [row for row in item.context.get("habits", []) if row.get("strength")]
-            if broken:
-                value = 1.0 - math.prod(1.0 - 0.8 * row["strength"] for row in broken)
-                detail = [{key: row[key] for key in ("habit", "usual", "current", "share")} for row in sorted(broken, key=lambda r: -r["strength"])]
-                item.signals["habit_break"] = (value, {"broken": detail})
+            if not broken:
+                continue
+            # Habits that change together (an editor formats the code, another
+            # computer lacks the template) count as one change per group.
+            groups = defaultdict(list)
+            for row in broken:
+                groups[HABIT_GROUP.get(row["habit"], "structure")].append(row["strength"])
+            values = {}
+            for group, strengths in groups.items():
+                strongest = max(strengths)
+                values[group] = min(1.0, strongest + 0.25 * (sum(strengths) - strongest)) * HABIT_GROUP_WEIGHT[group]
+            value = 1.0 - math.prod(1.0 - 0.8 * v for v in values.values())
+            detail = [
+                {**{key: row[key] for key in ("habit", "usual", "current", "share")}, "group": HABIT_GROUP.get(row["habit"], "structure")}
+                for row in sorted(broken, key=lambda r: -r["strength"])
+            ]
+            item.signals["habit_break"] = (value, {"broken": detail})
 
     def _vocabulary_signals(self):
         """Names never used before by the participant, compared with how
@@ -721,7 +794,7 @@ class ContestAssessor:
         rate = new_lines / minutes
         value = clamp((rate - 4.0) / 8.0)
         if value > 0:
-            item.signals["burst"] = (value, {"lines": new_lines, "minutes": minutes})
+            item.signals["burst"] = (value, {"lines": new_lines, "minutes": minutes, "first": previous is None})
 
     def _rewrite(self, item, previous):
         if previous is None or item.features.code_lines < 15 or previous.features.code_lines < 15:
@@ -743,13 +816,12 @@ class ContestAssessor:
         user_totals = Counter()
         for (user_id, _pi_id), score in best.items():
             user_totals[user_id] += score
+        problems = {}
+        # How fast each participant was on each problem among those who got
+        # half the points during the round: 1 = the fastest.
+        speed = {}
         for pi_id, items in self.by_pi.items():
             tried = {item.user_id for item in items}
-            solved = {user_id for user_id in tried if best[(user_id, pi_id)] >= 0.9}
-            solve_rate = len(solved) / len(tried)
-            # Strength of each participant on the other problems, as a percentile.
-            totals = {user_id: user_totals[user_id] - best.get((user_id, pi_id), 0.0) for user_id in users}
-            ordered = sorted(totals.values())
             first_good = {}
             first_any = {}
             for item in items:
@@ -759,28 +831,59 @@ class ContestAssessor:
             first_good = {user_id: item for user_id, item in first_good.items() if item.during_round}
             first_any = {user_id: item for user_id, item in first_any.items() if item.during_round}
             times = {user_id: self._minutes_since_start(item) for user_id, item in first_good.items()}
+            known = {user_id: t for user_id, t in times.items() if t is not None and t >= 0}
+            for user_id, minutes in known.items():
+                if len(known) >= 5:
+                    speed[user_id, pi_id] = sum(t > minutes for t in known.values()) / (len(known) - 1)
+            problems[pi_id] = (tried, first_good, first_any, times)
+        for pi_id, (tried, first_good, first_any, times) in problems.items():
+            solved = {user_id for user_id in tried if best[(user_id, pi_id)] >= 0.9}
+            solve_rate = len(solved) / len(tried)
+            # Strength of each participant on the other problems, as a percentile.
+            totals = {user_id: user_totals[user_id] - best.get((user_id, pi_id), 0.0) for user_id in users}
+            ordered = sorted(totals.values())
+
+            def strength(user_id, ordered=ordered, totals=totals):
+                below = sum(1 for total in ordered if total < totals[user_id])
+                return below / max(len(ordered) - 1, 1)
+
             for user_id, item in first_good.items():
                 minutes = times[user_id]
                 others = [t for u, t in times.items() if u != user_id and t is not None and t >= 0]
                 if minutes is not None and minutes >= 0 and len(others) >= 4 and item.features.code_lines >= 15:
                     median = statistics.median(others)
                     value = clamp((0.5 * median - minutes) / (0.5 * median)) if median > 0 else 0.0
+                    # Fast compared with others means little for someone who is
+                    # always fast: compare with the participant's own pace too.
+                    own = [speed[user_id, other] for other in problems if other != pi_id and (user_id, other) in speed]
+                    usual = statistics.median(own) if len(own) >= 2 else None
+                    rank = speed.get((user_id, pi_id))
+                    if usual is None or rank is None:
+                        value *= 0.5
+                    else:
+                        value *= clamp((rank - usual) / 0.4)
                     if value > 0:
-                        item.signals["fast_solve"] = (value, {"minutes": minutes, "median": median})
+                        item.signals["fast_solve"] = (value, {"minutes": minutes, "median": median, "usual_rank": usual, "rank": rank})
                 if item.score >= 0.9 and solve_rate < 0.5 and len(users) >= 5:
-                    below = sum(1 for total in ordered if total < totals[user_id])
-                    strength = below / max(len(ordered) - 1, 1)
-                    value = clamp((1.0 - strength) * (1.0 - solve_rate) / 0.5)
+                    participant_strength = strength(user_id)
+                    value = clamp((1.0 - participant_strength) * (1.0 - solve_rate) / 0.5)
                     if value > 0:
-                        item.signals["score_surprise"] = (value, {"strength": strength, "solve_rate": solve_rate})
-            for item in first_any.values():
+                        item.signals["score_surprise"] = (value, {"strength": participant_strength, "solve_rate": solve_rate})
+            for user_id, item in first_any.items():
                 if item.score is not None and item.score >= 1.0 and solve_rate < 0.3 and len(tried) >= 5:
-                    item.signals["first_try"] = (1.0 - solve_rate / 0.3, {"solve_rate": solve_rate})
+                    # Strong participants solve hard problems at once.
+                    participant_strength = strength(user_id)
+                    value = (1.0 - solve_rate / 0.3) * (1.0 - participant_strength)
+                    if value > 0:
+                        item.signals["first_try"] = (value, {"solve_rate": solve_rate, "strength": participant_strength})
 
     def _combine(self, item):
         logit = BIAS
         signals = {}
         for name, (value, detail) in item.signals.items():
+            if not item.during_round and name in AFTER_ROUND_HALVED:
+                value *= 0.5
+                detail = {**(detail or {}), "after_round": True}
             contribution = self.weights.get(name, 0.0) * value
             logit += contribution
             signals[name] = {"value": round(value, 4), "contribution": round(contribution, 4), "detail": detail}

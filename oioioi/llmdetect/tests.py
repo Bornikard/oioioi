@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import os
 import random
@@ -29,6 +30,7 @@ from oioioi.llmdetect.middleware import ProblemViewMiddleware
 from oioioi.llmdetect.models import (
     LLMDetectConfig,
     LLMReferenceSolution,
+    LLMStatement,
     ProblemViewEvent,
     ReviewDecision,
     RiskAssessment,
@@ -107,6 +109,38 @@ int main(){
 }
 """
 
+# A beginner's solution: clearly not LLM-like.
+SCHOOL_CODE = """#include <iostream>
+using namespace std;
+
+int main()
+{
+    int n;
+    cin >> n;
+
+    int a[30000];
+
+    for (int i = 0; i < n; i++)
+    {
+        cin >> a[i];
+    }
+
+    int ile = 0;
+
+    for (int i = 1; i < n - 1; i++)
+    {
+        if (a[i] > a[i - 1] && a[i] > a[i + 1])
+        {
+            ile++;
+        }
+    }
+
+    cout << ile;
+
+    return 0;
+}
+"""
+
 _STATEMENTS = [
     "for(int i=0;i<n;i++)a[i]{op}=b[i];",
     "if(x{cmp}y)swap(x,y);",
@@ -152,6 +186,25 @@ class TestFeatures(SimpleTestCase):
         self.assertGreater(llm_score, 0.8)
         self.assertLess(human_score, 0.1)
         self.assertIn("sentence_comment_ratio", [name for name, _c in reasons])
+
+    def test_using_namespace_std_is_not_a_std_prefix(self):
+        features = F.extract_features(SCHOOL_CODE, F.C_FAMILY)
+        self.assertEqual(features["std_qualified_per_100"], 0)
+        self.assertEqual(features["using_namespace_std"], 1)
+        self.assertGreater(F.extract_features("int main() { std::cout << 1; std::cin.tie(0); }", F.C_FAMILY)["std_qualified_per_100"], 0)
+
+    def test_llm_style_explained_both_ways(self):
+        score, reasons = F.llm_style(F.extract_features(SCHOOL_CODE, F.C_FAMILY))
+        self.assertLess(score, 0.1)
+        detail = {
+            "score": score,
+            "reasons": [name for name, c in reasons if c > 0][:3],
+            "against": [name for name, c in reasons if c < 0][:3],
+        }
+        text = describe("llm_style", detail)
+        self.assertIn("LLM-likeness of the code: ", text)
+        self.assertIn("Unlike LLM code: using namespace std, one- or two-letter identifiers", text)
+        self.assertNotIn("std:: prefixes", text)
 
     def test_fingerprints_survive_renaming_and_comment_removal(self):
         disguised = LLM_BFS
@@ -363,7 +416,11 @@ class TestAssessment(LLMDetectTestCase):
         assessment = RiskAssessment.objects.get(submission=submission)
         broken = {row["habit"] for row in assessment.signals["habit_break"]["detail"]["broken"]}
         self.assertTrue({"includes", "namespace", "ll_alias", "template", "naming"} <= broken)
-        self.assertIn("includes: usually", describe("habit_break", assessment.signals["habit_break"]["detail"]))
+        text = describe("habit_break", assessment.signals["habit_break"]["detail"])
+        self.assertIn("Template: includes, std namespace, long long alias", text)
+        self.assertIn("Details in the habits table below.", text)
+        # One or two broken habits are described one by one.
+        self.assertIn("includes: usually", describe("habit_break", {"broken": assessment.signals["habit_break"]["detail"]["broken"][:1]}))
         self.assertIn("numVertices", assessment.signals["vocabulary"]["detail"]["new"])
         others = RiskAssessment.objects.filter(contest=self.contest).exclude(submission=submission)
         self.assertFalse([a for a in others if "habit_break" in a.signals or "vocabulary" in a.signals])
@@ -501,14 +558,17 @@ class TestViews(LLMDetectTestCase):
 
     def test_add_and_delete_references(self):
         self.assertTrue(self.client.login(username="test_admin"))
-        url = self._url("llmdetect_references")
+        url = self._url("llmdetect_references") + f"?problem={self.pis[1].id}"
         files = [ContentFile(LLM_BFS.encode(), name="a.cpp"), ContentFile(HUMAN_BFS.encode(), name="b.cpp")]
-        response = self.client.post(url, {"problem_instance": self.pis[1].id, "model_name": "m", "prompt_variant": "short", "files": files})
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(LLMReferenceSolution.objects.filter(problem_instance=self.pis[1], model_name="m").count(), 2)
-        self.assertTrue(LLMReferenceSolution.objects.first().fingerprints)
-        response = self.client.post(url, {"problem_instance": self.pis[1].id})
-        self.assertEqual(response.status_code, 200)
+        with patch("oioioi.llmdetect.views.statement_text", return_value=("", None, [])):
+            response = self.client.post(url, {"action": "answers", "model_name": "m", "prompt_variant": "student", "files": files})
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(LLMReferenceSolution.objects.filter(problem_instance=self.pis[1], model_name="m").count(), 2)
+            self.assertEqual(set(LLMReferenceSolution.objects.values_list("filename", flat=True)), {"a.cpp", "b.cpp"})
+            self.assertTrue(LLMReferenceSolution.objects.first().fingerprints)
+            response = self.client.post(url, {"action": "answers"})
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "Paste an answer or choose files.")
         self.assertEqual(LLMReferenceSolution.objects.count(), 2)
         reference = LLMReferenceSolution.objects.first()
         self.client.post(self._url("llmdetect_delete_reference", reference_id=reference.id))
@@ -516,14 +576,15 @@ class TestViews(LLMDetectTestCase):
 
     def test_chat_answers_added_by_hand_keep_only_the_code(self):
         self.assertTrue(self.client.login(username="test_admin"))
-        url = self._url("llmdetect_references")
+        url = self._url("llmdetect_references") + f"?problem={self.pis[1].id}"
         answer = "Here is the solution:\n\n```cpp\n" + LLM_BFS + "```\n\nExplanation: we run BFS from vertex 1.\n"
-        self.client.post(url, {"problem_instance": self.pis[1].id, "code": answer})
-        self.client.post(url, {"problem_instance": self.pis[1].id, "files": [ContentFile(answer.encode(), name="chat.txt")]})
-        self.client.post(url, {"problem_instance": self.pis[1].id, "code": HUMAN_BFS})
+        with patch("oioioi.llmdetect.views.statement_text", return_value=("", None, [])):
+            self.client.post(url, {"action": "answers", "text": answer})
+            # The same code from a file is already stored.
+            self.client.post(url, {"action": "answers", "files": [ContentFile(answer.encode(), name="chat.txt")]})
+            self.client.post(url, {"action": "answers", "text": HUMAN_BFS})
         sources = list(LLMReferenceSolution.objects.order_by("id").values_list("source", flat=True))
-        # Plain code is kept as it is (the form only trims surrounding whitespace).
-        self.assertEqual(sources, [LLM_BFS, LLM_BFS, HUMAN_BFS.strip()])
+        self.assertEqual(sources, [LLM_BFS, HUMAN_BFS])
 
     def test_settings(self):
         self.assertTrue(self.client.login(username="test_admin"))
@@ -583,11 +644,11 @@ class TestPrompts(SimpleTestCase):
             self.assertIn("C++", prompt)
 
     def test_statement_text_formats(self):
-        from oioioi.llmdetect.prompts import _text_of
+        from oioioi.llmdetect.statements import file_text
 
-        self.assertEqual(_text_of(b"<html><body><h1>Zadanie</h1><p>Dane jest n.</p></body></html>", ".html"), "Zadanie\nDane jest n.")
-        self.assertEqual(_text_of(b"Dane\r\n\r\n\r\n\r\njest n.", ".txt"), "Dane\n\njest n.")
-        self.assertEqual(_text_of(b"\x00", ".ps"), "")
+        self.assertEqual(file_text(b"<html><body><h1>Zadanie</h1><p>Dane jest n.</p></body></html>", ".html"), "Zadanie\nDane jest n.")
+        self.assertEqual(file_text(b"Dane\r\n\r\n\r\n\r\njest n.", ".txt"), "Dane\n\njest n.")
+        self.assertEqual(file_text(b"\x00", ".ps"), "")
 
 
 class TestBulkFormat(SimpleTestCase):
@@ -766,57 +827,94 @@ class TestReferencesPage(LLMDetectTestCase):
         super().setUp()
         self.assertTrue(self.client.login(username="test_admin"))
 
-    def test_load_statement_and_copy_buttons(self):
-        with patch("oioioi.llmdetect.views.statement_text", return_value="Dane jest n."):
-            response = self.client.get(self._url(problem=self.pis[0].id, statement=1))
-        self.assertEqual(response.context["prompts_form"].initial["statement"], "Dane jest n.")
+    def _read(self, text="Dane jest $n \\le 10^9$.", source="package", warnings=()):
+        return patch("oioioi.llmdetect.views.statement_text", return_value=(text, source, list(warnings)))
+
+    def test_statement_read_once_then_checked_and_edited(self):
+        with self._read(warnings=["Check it."]) as read:
+            response = self.client.get(self._url(problem=self.pis[0].id))
+            self.client.get(self._url(problem=self.pis[0].id))
+        self.assertEqual(read.call_count, 1)  # stored after the first reading
+        self.assertEqual(response.context["statement_form"].initial["text"], "Dane jest $n \\le 10^9$.")
+        self.assertContains(response, "Read from the LaTeX source in the problem package")
+        self.assertContains(response, "Check it.")
+        self.assertContains(response, "not checked yet")
         for _label, instruction in PROMPTS.values():
             self.assertContains(response, f'data-instruction="{instruction}"')
-        with patch("oioioi.llmdetect.views.statement_text", return_value=""):
-            response = self.client.get(self._url(problem=self.pis[0].id, statement=1))
-        self.assertContains(response, "Could not read the statement")
+        self.client.post(self._url(problem=self.pis[0].id), {"action": "statement", "text": "Poprawione."})
+        statement = LLMStatement.objects.get(problem_instance=self.pis[0])
+        self.assertEqual((statement.text, statement.source, statement.checked), ("Poprawione.", "edited", True))
+        # Reading again replaces the edited text.
+        with self._read(text="Nowa treść.", source="file"):
+            self.client.post(self._url(problem=self.pis[0].id), {"action": "reread"})
+        statement.refresh_from_db()
+        self.assertEqual((statement.text, statement.source, statement.checked), ("Nowa treść.", "file", False))
 
-    def test_download_prompts_of_one_problem(self):
-        response = self.client.post(
-            self._url(), {"action": "prompts", "problem_instance": self.pis[0].id, "statement": "Edited.", "prompts": ["plain", "student"]}
-        )
+    def test_unreadable_statement(self):
+        with self._read(text="", source=None, warnings=["No statement found for this problem."]):
+            response = self.client.get(self._url(problem=self.pis[1].id))
+        self.assertContains(response, "No statement found for this problem.")
+        self.assertContains(response, "it could not be read")
+
+    def test_download_prompts_of_one_problem_saves_the_statement(self):
+        with self._read():
+            response = self.client.post(
+                self._url(problem=self.pis[0].id), {"action": "statement", "text": "Edited.", "prompts": ["plain", "student"], "download": "1"}
+            )
         self.assertEqual(response["Content-Type"], "application/json")
         self.assertIn("prompts-camp-aaa.json", response["Content-Disposition"])
         data = json.loads(response.content)
         self.assertEqual(data["format"], PROMPTS_FORMAT)
         self.assertEqual(data["prompts"], [{"problem": "aaa", "prompt": v, "text": build_prompt(v, "Edited.")} for v in ("plain", "student")])
+        self.assertTrue(LLMStatement.objects.get(problem_instance=self.pis[0]).checked)
 
     def test_download_prompts_of_all_problems_and_the_script(self):
-        with patch("oioioi.llmdetect.views.statement_text", side_effect=lambda pi: "" if pi.short_name == "bbb" else f"Statement {pi.short_name}"):
+        LLMStatement.objects.create(problem_instance=self.pis[0], text="Checked aaa.", checked=True)
+        with patch(
+            "oioioi.llmdetect.views.statement_text", side_effect=lambda pi: ("", None, []) if pi.short_name == "bbb" else (f"Read {pi.short_name}", "file", [])
+        ):
             data = json.loads(self.client.get(self._url("llmdetect_all_prompts")).content)
         self.assertEqual({p["problem"] for p in data["prompts"]}, {"aaa", "ccc", "ddd"})
         self.assertEqual(len(data["prompts"]), 3 * len(PROMPTS))
+        self.assertIn("Checked aaa.", next(p["text"] for p in data["prompts"] if p["problem"] == "aaa"))
         response = self.client.get(self._url("llmdetect_script"))
         self.assertIn("llm_references.py", response["Content-Disposition"])
         self.assertIn(b"def main(argv=None):", response.content)
 
+    def test_add_a_pasted_chat_answer(self):
+        with self._read():
+            answer = "Oto rozwiązanie:\n```cpp\nint main(){}\n```\nWyjaśnienie: proste."
+            self.client.post(self._url(problem=self.pis[1].id), {"action": "answers", "text": answer, "model_name": "ChatGPT", "prompt_variant": "polish"})
+        reference = LLMReferenceSolution.objects.get()
+        self.assertEqual(
+            (reference.problem_instance, reference.model_name, reference.prompt_variant, reference.source), (self.pis[1], "ChatGPT", "polish", "int main(){}\n")
+        )
+
     def test_add_many(self):
         text = "### reference problem=aaa model=x prompt=plain\nint a(){}\n### reference problem=bbb model=y\n```cpp\nint b(){}\n```\n"
-        response = self.client.post(self._url(), {"action": "bulk", "text": text})
+        with self._read():
+            response = self.client.post(self._url(problem=self.pis[2].id), {"action": "answers", "text": text})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             sorted(LLMReferenceSolution.objects.values_list("problem_instance__short_name", "model_name", "source")),
             [("aaa", "x", "int a(){}\n"), ("bbb", "y", "int b(){}\n")],
         )
         self.assertTrue(LLMDetectConfig.objects.get(contest=self.contest).dirty)
-        # The same again, as a file, with one more: duplicates are skipped.
-        upload = ContentFile((text + "### reference problem=aaa\nint c(){}\n").encode(), name="references.txt")
-        self.client.post(self._url(), {"action": "bulk", "file": upload}, follow=True)
+        # The same again, as a file, with one more: duplicates are skipped;
+        # without problem= it is for the problem of the page.
+        upload = ContentFile((text + "### reference\nint c(){}\n").encode(), name="references.txt")
+        with self._read():
+            self.client.post(self._url(problem=self.pis[2].id), {"action": "answers", "files": upload}, follow=True)
         self.assertEqual(LLMReferenceSolution.objects.count(), 3)
+        self.assertEqual(LLMReferenceSolution.objects.get(source="int c(){}\n").problem_instance, self.pis[2])
 
     def test_add_many_with_errors_adds_nothing(self):
         text = "### reference problem=aaa\nint a(){}\n### reference problem=nope\nint b(){}\n"
-        response = self.client.post(self._url(), {"action": "bulk", "text": text})
+        with self._read():
+            response = self.client.post(self._url(problem=self.pis[0].id), {"action": "answers", "text": text})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "no problem nope")
         self.assertEqual(LLMReferenceSolution.objects.count(), 0)
-        self.client.post(self._url(), {"action": "bulk", "text": "### reference\nint a(){}\n", "default_problem": self.pis[2].id})
-        self.assertEqual(LLMReferenceSolution.objects.get().problem_instance, self.pis[2])
 
 
 class TestHostileCode(SimpleTestCase):
@@ -914,6 +1012,301 @@ class _StreamWithoutClose:
     def read(self, size=None):
         data, self.data = self.data, b""
         return data
+
+
+class TestNewAnalysisVersion(LLMDetectTestCase):
+    def test_older_analysis_is_recomputed(self):
+        submission = self._submit(self.humans[0], self.pis[0], HUMAN_BFS, minutes=10)
+        assess_contest(self.contest)
+        self.assertFalse(needs_update(self.contest))
+        SubmissionFeatures.objects.filter(submission=submission).update(version=F.FEATURES_VERSION - 1)
+        self.assertTrue(needs_update(self.contest))
+        assess_contest(self.contest)
+        self.assertEqual(SubmissionFeatures.objects.get(submission=submission).version, F.FEATURES_VERSION)
+        self.assertFalse(needs_update(self.contest))
+
+
+TEST_FILES = os.path.join(os.path.dirname(__file__), "test_files")
+
+SINOL_TEX = r"""\documentclass[zad,zawodnik,utf8,pl]{sinol}
+\title{Sumy}
+\id{tst}
+\konkurs{Tajny obóz 2026}
+\date{2026-11-09}
+\RAM{256}
+\begin{document}
+\begin{tasktext}
+\noindent {}%
+Dane są liczby $a_1, \ldots, a_n$ w~kolejności -- policz ich sumę.
+% A comment of the authors.
+
+\section{\sinolSNameInput}
+W~pierwszym wierszu $n$ ($1 \le n \le 10^6$), w~drugim \textbf{\emph{liczby}} $a_i$ ($|a_i| \le 10^9$).
+
+\section{\sinolSNameOutput}
+Wypisz \texttt{TAK} albo \texttt{NIE}.
+
+\section{Przykład}
+\makecompactexample{0}
+
+\section{Podzadania}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{\sinolSNameSubtask} & \textbf{\sinolSNamePoints} \\ \hline
+1 & $n \le 1000$ \\ \hline
+\end{tabular}
+\end{tasktext}
+\end{document}
+"""
+
+
+class TestStatements(SimpleTestCase):
+    def test_pdf_keeps_exponents_indices_and_polish_letters(self):
+        from oioioi.llmdetect.pdftext import pdf_text
+
+        # Bitmap fonts without a character map (T1), and the polski package (OT4).
+        for name in ("small_t1.pdf", "small_ot4.pdf"):
+            with open(os.path.join(TEST_FILES, name), "rb") as file:
+                text = pdf_text(file.read())
+            self.assertIn("(1 ≤ n ≤ 10^6, |a_{i−1}| ≤ 2 · 10^9)", text, name)
+            self.assertIn("∑^n_{i=1} a^2_i", text, name)
+            self.assertIn("Żółć", text, name)
+            self.assertIn("gęślą jaźń", text, name)
+            # The example input and output side by side, as in the PDF.
+            self.assertRegex(text, r"Dla danych wejściowych: +poprawnym wynikiem jest:")
+            self.assertRegex(text, r"\n3 +14\n1 2 3")
+
+    def test_latex_source(self):
+        from oioioi.llmdetect.statements import latex_statement
+
+        text, warnings = latex_statement(SINOL_TEX, lambda name: ("2\n1 2\n", "3\n") if name == "0" else None)
+        self.assertEqual(warnings, [])
+        self.assertTrue(text.startswith("# Sumy\nDostępna pamięć: 256 MB.\n\nDane są liczby $a_1, \\ldots, a_n$ w kolejności – policz ich sumę."))
+        self.assertIn("## Wejście\n\nW pierwszym wierszu $n$ ($1 \\le n \\le 10^6$), w drugim liczby $a_i$ ($|a_i| \\le 10^9$).", text)
+        self.assertIn("Wypisz TAK albo NIE.", text)
+        self.assertIn("Dla danych wejściowych:\n```\n2\n1 2\n```\npoprawnym wynikiem jest:\n```\n3\n```", text)
+        self.assertIn("| Podzadanie | Liczba punktów |\n|---|---|\n| 1 | $n \\le 1000$ |", text)
+        # What must not leave the camp, and the authors' comments.
+        for secret in ("Tajny", "2026-11-09", "comment"):
+            self.assertNotIn(secret, text)
+
+    def test_latex_source_without_example_or_with_pictures(self):
+        from oioioi.llmdetect.statements import latex_statement
+
+        tex = SINOL_TEX.replace("Wypisz", "\\includegraphics[width=5cm]{rys.png} Wypisz")
+        text, warnings = latex_statement(tex)
+        self.assertIn("[example 0]", text)
+        self.assertIn("[picture]", text)
+        self.assertEqual(len(warnings), 2)
+
+
+class TestStatementSources(LLMDetectTestCase):
+    def _package(self, tex=SINOL_TEX, example=True):
+        import zipfile
+
+        from oioioi.problems.models import ProblemPackage
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("tst/doc/tstzad.tex", tex)
+            if example:
+                archive.writestr("tst/in/tst0.in", "2\n1 2\n")
+                archive.writestr("tst/out/tst0.out", "3\n")
+            archive.writestr("tst/in/tst1a.in", "x" * 1000)
+        package = ProblemPackage(problem=self.pis[0].problem, status="OK")
+        package.package_file.save("tst.zip", ContentFile(buffer.getvalue()), save=False)
+        package.save()
+        return package
+
+    def test_package_source_first(self):
+        from oioioi.llmdetect.statements import SOURCE_PACKAGE, statement_text
+
+        self._package()
+        text, source, warnings = statement_text(self.pis[0])
+        self.assertEqual(source, SOURCE_PACKAGE)
+        self.assertIn("poprawnym wynikiem jest:\n```\n3\n```", text)
+        self.assertEqual(warnings, [])
+
+    def test_statement_file_through_a_stream_without_close(self):
+        from oioioi.llmdetect.statements import SOURCE_FILE, statement_text
+        from oioioi.problems.models import ProblemStatement
+
+        with open(os.path.join(TEST_FILES, "small_ot4.pdf"), "rb") as file:
+            data = file.read()
+        statement = ProblemStatement(problem=self.pis[1].problem)
+        statement.content.save("bbbzad.pdf", ContentFile(data), save=False)
+        statement.save()
+        # As FiletrackerStorage._open returns it.
+        with patch("django.db.models.fields.files.FieldFile.read", side_effect=lambda *args: _StreamWithoutClose(data).read()):
+            with patch("django.db.models.fields.files.FieldFile.close", side_effect=AttributeError("no close")):
+                text, source, warnings = statement_text(self.pis[1])
+        self.assertEqual(source, SOURCE_FILE)
+        self.assertIn("10^6", text)
+        self.assertIn("Read from the PDF: check the formulas, the examples and the tables.", warnings)
+
+    def test_errors_are_reported(self):
+        from oioioi.llmdetect.statements import statement_text
+
+        self.assertEqual(statement_text(self.pis[2]), ("", None, ["No statement found for this problem."]))
+        self._package()
+        with patch("oioioi.llmdetect.statements.latex_statement", side_effect=ValueError("broken")):
+            text, source, warnings = statement_text(self.pis[0])
+        self.assertEqual((text, source), ("", None))
+        self.assertEqual(warnings, ["The statement could not be read: ValueError: broken"])
+
+
+def reformatted(code):
+    """The code after an editor formatted it: spaces after keywords, around
+    operators and after commas, two-space indentation.
+    """
+    import re as _re
+
+    lines = []
+    for line in code.split("\n"):
+        if not line.startswith("#"):  # formatters leave preprocessor lines alone
+            line = _re.sub(r"\b(for|if|while)\(", r"\1 (", line)
+            line = _re.sub(r"(?<=[\w\]\)])(<=|>=|==|!=|\+=|-=|\*=|\^=|\|=|=|<|>|\+|\*|/|\^|\|)(?=[\w\(\[-])", r" \1 ", line)
+            line = _re.sub(r",(?=\S)", ", ", line)
+            line = line.replace("    ", "  ")
+        lines.append(line)
+    return "\n".join(lines)
+
+
+SCHOOL_TEMPLATE = """#include <bits/stdc++.h>
+using namespace std;
+inline int czytaj(){
+    int x=0,znak=1;char c=getchar();
+    while(c<'0'||c>'9'){if(c=='-')znak=-1;c=getchar();}
+    while(c>='0'&&c<='9'){x=x*10+(c-'0');c=getchar();}
+    return x*znak;
+}
+inline void pisz(long long x){
+    if(x<0){putchar('-');x=-x;}
+    if(x>9)pisz(x/10);
+    putchar('0'+x%10);
+}
+"""
+
+
+class TestFairness(LLMDetectTestCase):
+    """Honest participants must not look like cheaters."""
+
+    def _risk(self, submission):
+        return RiskAssessment.objects.get(submission=submission)
+
+    def test_editor_formatting_counts_once_and_weakly(self):
+        for i, user in enumerate(self.humans):
+            for day, pi in enumerate(self.pis):
+                code = human_code(f"{i}-{day}")
+                if user == self.humans[0] and day == 3:
+                    code = reformatted(code)
+                last = self._submit(user, pi, code, minutes=90 + 7 * i)
+                if user == self.humans[0] and day == 3:
+                    formatted = last
+        assess_contest(self.contest)
+        assessment = self._risk(formatted)
+        broken = assessment.signals["habit_break"]["detail"]["broken"]
+        self.assertGreaterEqual(len({row["habit"] for row in broken}), 3)
+        self.assertEqual({row["group"] for row in broken}, {"formatting"})
+        # Several habits, one change: at most one weak group.
+        self.assertLessEqual(assessment.signals["habit_break"]["value"], 0.8 * 0.6 + 1e-6)
+        self.assertLess(assessment.risk, FLAG_THRESHOLD)
+        self.assertIn("Formatting changes together", describe("habit_break", assessment.signals["habit_break"]["detail"]))
+
+    def _speed_camp(self, fast, slow_then_fast):
+        """Everybody solves every problem; ``fast`` is always the first,
+        ``slow_then_fast`` is the last except on the last problem.
+        """
+        submissions = {}
+        for i, user in enumerate(self.humans):
+            for day, pi in enumerate(self.pis):
+                minutes = 60 + 15 * i
+                if user == fast:
+                    minutes = 10
+                elif user == slow_then_fast:
+                    minutes = 14 if day == 3 else 250
+                submissions[user, day] = self._submit(user, pi, human_code(f"{i}-{day}"), minutes=minutes)
+        assess_contest(self.contest)
+        return submissions
+
+    def test_speed_compared_with_own_pace(self):
+        fast, slow = self.humans[0], self.humans[6]
+        submissions = self._speed_camp(fast, slow)
+        for day in range(4):
+            self.assertNotIn("fast_solve", self._risk(submissions[fast, day]).signals)
+        sudden = self._risk(submissions[slow, 3]).signals["fast_solve"]
+        self.assertGreater(sudden["value"], 0.5)
+        self.assertIn("usually faster than 0%", describe("fast_solve", sudden["detail"]))
+
+    def test_time_from_the_round_start_with_paper_statements(self):
+        # Statements on paper: the first opening in SIO2 is late.
+        late = self.humans[3]
+        submissions = {}
+        for i, user in enumerate(self.humans):
+            for day, pi in enumerate(self.pis):
+                minutes = 200 if user == late and day == 3 else 60 + 10 * i
+                submissions[user, day] = self._submit(user, pi, human_code(f"{i}-{day}"), minutes=minutes)
+                if user == late and day == 3:
+                    ProblemViewEvent.objects.create(user=user, problem_instance=pi, date=pi.round.start_date + timedelta(minutes=195))
+        assess_contest(self.contest)
+        self.assertNotIn("fast_solve", self._risk(submissions[late, 3]).signals)
+        # When statements are read in SIO2, the opening counts.
+        config = LLMDetectConfig.objects.get(contest=self.contest)
+        config.time_from_statement = True
+        config.save()
+        assess_contest(self.contest)
+        self.assertIn("fast_solve", self._risk(submissions[late, 3]).signals)
+
+    def test_strong_participant_solving_a_hard_problem_at_once(self):
+        strong, weak = self.humans[0], self.humans[1]
+        results = {}
+        for i, user in enumerate(self.humans):
+            for day, pi in enumerate(self.pis):
+                if day == 3 and user not in (strong, weak):
+                    score = 20  # a hard problem
+                elif day < 3:
+                    score = 100 if user == strong else 30 + 5 * i
+                else:
+                    score = 100
+                results[user, day] = self._submit(user, pi, human_code(f"{i}-{day}"), minutes=90 + 7 * i, score=score)
+        assess_contest(self.contest)
+        self.assertNotIn("first_try", self._risk(results[strong, 3]).signals)
+        self.assertIn("first_try", self._risk(results[weak, 3]).signals)
+
+    def test_shared_school_template_is_not_similarity(self):
+        friends = self.humans[:2]
+        for i, user in enumerate(self.humans + [self.cheater]):
+            for day, pi in enumerate(self.pis):
+                code = human_code(f"{i}-{day}")
+                if user in friends:
+                    code = SCHOOL_TEMPLATE + code.split("\n", 2)[2]
+                self._submit(user, pi, code, minutes=90 + 7 * i)
+        assess_contest(self.contest)
+        for assessment in RiskAssessment.objects.filter(user__in=friends):
+            self.assertNotIn("peer_similarity", assessment.signals)
+            self.assertLess(assessment.context["peer"]["similarity"], 0.5)
+
+    def test_confirmed_case_does_not_flag_the_original_author(self):
+        original = self._submit(self.humans[0], self.pis[3], HUMAN_BFS, minutes=30)
+        copied = self._submit(self.cheater, self.pis[3], HUMAN_BFS, minutes=60)
+        later = self._submit(self.humans[1], self.pis[3], HUMAN_BFS, minutes=90)
+        for i, user in enumerate(self.humans[2:]):
+            self._submit(user, self.pis[3], human_code(f"other-{i}"), minutes=100)
+        LLMReferenceSolution.objects.create(problem_instance=self.pis[3], kind=LLMReferenceSolution.KIND_CONFIRMED, source=HUMAN_BFS, submission=copied)
+        assess_contest(self.contest)
+        self.assertNotIn("llm_reference", self._risk(original).signals)
+        self.assertNotIn("llm_reference", self._risk(copied).signals)  # not with itself
+        self.assertIn("llm_reference", self._risk(later).signals)
+
+    def test_after_the_round_style_signals_count_half(self):
+        submission = self._camp()
+        late = self._submit(self.cheater, self.pis[3], LLM_BFS.replace("pending", "waiting"), minutes=8 * 60)
+        assess_contest(self.contest)
+        during = self._risk(submission).signals["habit_break"]
+        after = self._risk(late).signals["habit_break"]
+        self.assertTrue(after["detail"]["after_round"])
+        self.assertNotIn("after_round", during["detail"])
+        self.assertIn("Counted half", describe("habit_break", after["detail"]))
 
 
 class TestFiletrackerSources(LLMDetectTestCase):

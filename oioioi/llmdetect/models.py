@@ -33,6 +33,14 @@ class LLMDetectConfig(models.Model):
         verbose_name=_("weight of earlier contests"),
         help_text=_("Weight of a submission from an earlier contest in a profile, compared with one from this contest written on the same day (1)."),
     )
+    time_from_statement = models.BooleanField(
+        default=False,
+        verbose_name=_("count time from opening the statement"),
+        help_text=_(
+            "Only when participants read the statements in SIO2: with paper statements the first opening is late or never, "
+            "and participants would look fast. Otherwise time counts from the start of the round."
+        ),
+    )
     computed_at = models.DateTimeField(null=True, blank=True)
     # The newest submission included in the last computation.
     last_submission_id = models.IntegerField(default=0)
@@ -115,6 +123,26 @@ class LLMReferenceSolution(models.Model):
             self.fingerprints = analysis["fingerprints"]
             self.version = FEATURES_VERSION
         super().save(*args, **kwargs)
+
+
+class LLMStatement(models.Model):
+    """The text of a statement sent in the prompts, read from the problem's
+    package or statement file once, then checked and edited by the staff.
+    """
+
+    SOURCE_PACKAGE = "package"
+    SOURCE_FILE = "file"
+    SOURCE_EDITED = "edited"
+
+    problem_instance = models.OneToOneField(ProblemInstance, related_name="llm_statement", on_delete=models.CASCADE)
+    text = models.TextField()
+    source = models.CharField(max_length=16, blank=True)
+    # What may be wrong with the text as it was read.
+    warnings = models.JSONField(default=list)
+    # Saved by the staff after checking it.
+    checked = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(default=timezone.now)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
 
 class ProblemViewEvent(models.Model):

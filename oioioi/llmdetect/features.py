@@ -12,7 +12,7 @@ import zlib
 from collections import Counter
 
 # Bump when the features or fingerprints change, so stored ones get recomputed.
-FEATURES_VERSION = 4
+FEATURES_VERSION = 5
 
 # Bounds on what is stored per submission, so that crafted code cannot make
 # its stored analysis (and the memory to assess a contest) large.
@@ -75,14 +75,15 @@ LIBRARY_NAMES = frozenset(
 )
 
 # Frequent words of English code comments; Polish participants usually
-# write comments in Polish or not at all.
+# write comments in Polish or not at all. Words that are Polish too (a, to,
+# we, do, na...) are left out.
 ENGLISH_WORDS = frozenset(
     """
-    the a an to of and or we is are for each if this in with from read compute calculate number store check update
-    use return find all that it be by as on at not then else loop over until while into new current result answer
-    initialize count value values sum total maximum minimum max min first last next previous array list edge edges
-    node nodes graph tree query queries case cases input output print step using get set add remove handle since
-    must will can need so only otherwise iterate element elements index position length size given
+    the an of and or is are for each if this in with from read compute calculate number store check update use
+    return find all that it be by as at not then else loop over until while into new current result answer
+    initialize count value values total maximum minimum first last next previous array list edge edges node nodes
+    graph tree query queries case cases input output print step using get add remove handle since must will can need
+    so only otherwise iterate element elements index position length size given
     """.split()
 )
 
@@ -289,6 +290,8 @@ def extract_features(source, language):
     statements_per_line = [line.count(";") for line in nonblank if not line.lstrip().startswith("for")]
     counts = Counter(texts)
     has_main = "main" in counts
+    # std::x, not the std of "using namespace std".
+    std_prefixes = sum(1 for (kind, text), following in zip(tokens, tokens[1:], strict=False) if kind == "id" and text == "std" and following == ("op", "::"))
 
     features = {
         # Comments.
@@ -305,7 +308,7 @@ def extract_features(source, language):
         "short_ident_ratio": _ratio(sum(len(i) <= 2 for i in distinct), len(distinct)),
         "upper_ident_ratio": _ratio(sum(i.isupper() and len(i) > 1 for i in distinct), len(distinct)),
         # Idioms of competitive programmers and of LLMs.
-        "std_qualified_per_100": counts["std"] * per_100,
+        "std_qualified_per_100": std_prefixes * per_100,
         "using_namespace_std": float(bool(re.search(r"using\s+namespace\s+std", source))),
         "bits_header": float(any("bits/stdc++" in line for line in pp_lines)),
         "includes_per_100": sum(line.startswith("#include") for line in pp_lines) * per_100,
@@ -387,7 +390,9 @@ def style_vector(features):
 # How typical a feature is of LLM-written competitive code, as (weight,
 # feature, cap): the feature is divided by the cap and clipped to [0, 1].
 # Hand-set from what LLM chats produce for olympiad problems; once the
-# staff has made enough decisions, these are worth refitting.
+# staff has made enough decisions, these are worth refitting. Only features
+# that set LLM code apart from code taught at school: "return 0;" and
+# spaces around operators are what teachers teach, so they are not here.
 LLM_STYLE_WEIGHTS = (
     (1.6, "sentence_comment_ratio", 0.5),
     (1.0, "english_comment_ratio", 0.4),
@@ -397,8 +402,6 @@ LLM_STYLE_WEIGHTS = (
     (0.8, "std_qualified_per_100", 10.0),
     (0.5, "reference_params_per_100", 3.0),
     (0.4, "const_per_100", 6.0),
-    (0.3, "return_zero", 1.0),
-    (0.3, "spaced_operator_ratio", 1.0),
     (-0.8, "using_namespace_std", 1.0),
     (-0.8, "bits_header", 1.0),
     (-0.8, "defines_per_100", 4.0),

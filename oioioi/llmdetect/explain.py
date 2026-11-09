@@ -45,6 +45,12 @@ HABIT_LABELS = {
     "function_names": pgettext_lazy("llmdetect", "function names"),
 }
 
+HABIT_GROUP_LABELS = {
+    "template": pgettext_lazy("llmdetect", "Template"),
+    "formatting": pgettext_lazy("llmdetect", "Formatting"),
+    "structure": pgettext_lazy("llmdetect", "Structure of the code"),
+}
+
 # Habit values that are descriptions, not code.
 HABIT_VALUE_LABELS = {
     "separate": pgettext_lazy("llmdetect", "separate headers"),
@@ -188,9 +194,14 @@ def _z(value):
 
 
 def describe(name, detail, users=None):
-    """One sentence about why the signal fired, for the staff."""
-    users = users or {}
-    d = detail or {}
+    """Why the signal fired, for the staff."""
+    text = _describe(name, detail or {}, users or {})
+    if (detail or {}).get("after_round"):
+        text += " " + gettext("Counted half: sent after the round, when the solutions are discussed.")
+    return text
+
+
+def _describe(name, d, users):
     if name == "llm_reference":
         text = gettext("%(similarity)s of the code matches an LLM reference (participants usually: %(baseline)s).") % {
             "similarity": _percent(d.get("similarity", 0)),
@@ -201,26 +212,52 @@ def describe(name, detail, users=None):
         return text
     if name == "llm_style":
         reasons = ", ".join(str(feature_label(reason)) for reason in d.get("reasons", []))
-        return gettext("Typical of LLM code: %(reasons)s.") % {"reasons": reasons} if reasons else ""
+        if "score" not in d:  # computed before the score was stored
+            return gettext("Typical of LLM code: %(reasons)s.") % {"reasons": reasons} if reasons else ""
+        parts = [gettext("LLM-likeness of the code: %(score)s.") % {"score": _percent(d["score"])}]
+        if reasons:
+            parts.append(gettext("Like LLM code: %(reasons)s.") % {"reasons": reasons})
+        against = ", ".join(str(feature_label(reason)) for reason in d.get("against", []))
+        if against:
+            parts.append(gettext("Unlike LLM code: %(reasons)s.") % {"reasons": against})
+        return " ".join(parts)
     if name == "style_shift":
-        return gettext("Far from own style (z = %(z)s) and closer to LLM style (%(style)s, usually %(profile)s).") % {
+        return gettext(
+            "Far from own style (z = %(z)s, compared with how far others strayed from theirs on this problem)"
+            " and closer to LLM style (%(style)s, usually %(profile)s)."
+        ) % {
             "z": _z(d.get("z", 0)),
             "style": _percent(d.get("style", 0)),
             "profile": _percent(d.get("profile_style", 0)),
         }
     if name == "deviation":
-        return gettext("Far from own style (z = %(z)s), profile confidence %(confidence)s.") % {
+        return gettext(
+            "Far from own style (z = %(z)s, compared with how far others strayed from theirs on this problem), profile confidence %(confidence)s."
+        ) % {
             "z": _z(d.get("z", 0)),
             "confidence": _percent(d.get("confidence", 0)),
         }
     if name == "fast_solve":
-        return gettext("Solved after %(minutes).0f min; others needed %(median).0f min (median).") % d
+        text = gettext("Solved after %(minutes).0f min; others needed %(median).0f min (median).") % d
+        if d.get("usual_rank") is not None and d.get("rank") is not None:
+            text += " " + gettext("Faster than %(rank)s of the others here; usually faster than %(usual)s.") % {
+                "rank": _percent(d["rank"]),
+                "usual": _percent(d["usual_rank"]),
+            }
+        else:
+            text += " " + gettext("Own usual pace not known yet, so counted half.")
+        return text
     if name == "burst":
-        return gettext("%(lines)d new lines in %(minutes).0f min.") % d
+        if d.get("first"):
+            return gettext("%(lines)d lines in the first submission, %(minutes).0f min after the start.") % d
+        return gettext("%(lines)d new lines %(minutes).0f min after the previous submission.") % d
     if name == "rewrite":
         return gettext("Only %(similarity)s in common with the previous, failed version.") % {"similarity": _percent(d.get("similarity", 0))}
     if name == "first_try":
-        return gettext("Full score at the first submission; %(rate)s of participants solved it.") % {"rate": _percent(d.get("solve_rate", 0))}
+        text = gettext("Full score at the first submission; %(rate)s of participants solved it.") % {"rate": _percent(d.get("solve_rate", 0))}
+        if "strength" in d:
+            text += " " + gettext("On other problems better than %(strength)s of participants.") % {"strength": _percent(d["strength"])}
+        return text
     if name == "score_surprise":
         return gettext("Solved by %(rate)s of participants; on other problems this participant is better than %(strength)s of them.") % {
             "rate": _percent(d.get("solve_rate", 0)),
@@ -233,7 +270,19 @@ def describe(name, detail, users=None):
     if name == "paste_characters":
         return gettext("Found: %(found)s.") % {"found": ", ".join(sorted({str(PASTE_CHAR_LABELS.get(f, f)) for f in d.get("found", [])}))}
     if name == "habit_break":
-        return "; ".join(describe_habit(row) for row in d.get("broken", [])) + "."
+        broken = d.get("broken", [])
+        if len(broken) <= 2:
+            text = "; ".join(describe_habit(row) for row in broken) + "."
+        else:
+            # Many at once: by group; the habits table lists each one.
+            groups = {}
+            for row in broken:
+                groups.setdefault(row.get("group", "structure"), []).append(str(habit_label(row["habit"])))
+            text = "; ".join(f"{HABIT_GROUP_LABELS.get(group, group)}: {', '.join(names)}" for group, names in groups.items())
+            text += ". " + gettext("Details in the habits table below.")
+        if any(row.get("group") == "formatting" for row in broken):
+            text += " " + gettext("Formatting changes together when an editor formats the code or on another computer: it counts once, and weakly.")
+        return text
     if name == "vocabulary":
         return gettext("%(overlap)s of the names were used before by this participant (usually %(median)s). New: %(new)s.") % {
             "overlap": _percent(d.get("overlap", 0)),

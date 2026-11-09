@@ -129,13 +129,13 @@
     <li class="text-muted">{% trans "None yet." %}</li>
     {% endfor %}
 </ul>
-<form method="post" class="row g-2 align-items-end">
+<form method="post" class="row g-2 align-items-start">
     {% csrf_token %}
-    <div class="col-md-3">{{ form.verdict.label_tag }} {{ form.verdict }}</div>
-    <div class="col-md-3">{{ form.submission.label_tag }} {{ form.submission }}</div>
-    <div class="col-md-4">{{ form.note.label_tag }} {{ form.note }}</div>
-    <div class="col-md-2"><button type="submit" class="btn btn-primary">{% trans "Save decision" %}</button></div>
-    <div class="form-text">{{ form.submission.help_text }}
+    <div class="col-md-3"><label class="form-label small mb-1" for="{{ form.verdict.id_for_label }}">{{ form.verdict.label|capfirst }}</label>{{ form.verdict }}</div>
+    <div class="col-md-3"><label class="form-label small mb-1" for="{{ form.submission.id_for_label }}">{{ form.submission.label|capfirst }}</label>{{ form.submission }}</div>
+    <div class="col-md-4"><label class="form-label small mb-1" for="{{ form.note.id_for_label }}">{{ form.note.label|capfirst }}</label>{{ form.note }}</div>
+    <div class="col-md-2 d-flex align-items-end" style="min-height: 4.2rem;"><button type="submit" class="btn btn-primary btn-sm w-100">{% trans "Save decision" %}</button></div>
+    <div class="col-12 form-text mt-1">{{ form.submission.help_text }}
     {% blocktrans %}Decide only after talking with the participant.{% endblocktrans %}
     {% if disqualification_enabled %}{% url 'oioioiadmin:disqualification_disqualification_add' as disq_url %}{% blocktrans %}A disqualification is added separately, in <a href="{{ disq_url }}">disqualifications</a>.{% endblocktrans %}{% endif %}</div>
 </form>

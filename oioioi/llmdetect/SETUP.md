@@ -117,8 +117,8 @@ does not change it.
 1. Log in as a superuser or a full contest admin of a camp.
 2. Open the camp panel → **LLM detection** (in Polish: **Wykrywanie LLM**), or
    the same item in the contest admin menu.
-3. Open **Referencje LLM**, pick a problem and press **Wczytaj treść**: the text
-   of its statement should appear in the box.
+3. Open **Referencje LLM** and pick a problem: the text of its statement
+   should appear in the box (step 1), with where it was read from.
 
 ## 7. Getting reference solutions
 
@@ -127,9 +127,21 @@ is to one of them, the higher the risk. Get tens per problem, from the models
 participants use, in several prompt styles, before each round. Keep wrong
 answers too: their mistakes are a strong fingerprint.
 
-On the **Referencje LLM** page, first **Wczytaj treść** (load the statement),
-check the text and remove anything that must not leave the camp. Then use one
-or both of the ways below.
+On the **Referencje LLM** page, pick a problem at the top. Step 1 shows its
+statement:
+
+- from the **LaTeX source in the problem package** (`doc/<id>zad.tex` of a
+  Sinol package) when there is one: the math stays as LaTeX, which LLMs read
+  exactly, and the example comes from the package's `in/` and `out/` files;
+  the contest name and the date are left out;
+- otherwise from the **statement file** (PDF, HTML, zip, txt): exponents and
+  indices are kept (`10^9`, `a_i`), but check the formulas, the example and
+  the tables, as the page reminds.
+
+Check the text, remove anything that must not leave the camp, and press
+**Zapisz treść**. The saved text is used by every prompt, also for all
+problems at once; **Odczytaj ponownie z zadania** reads it again (e.g. after a
+new package). Then use one or both of the ways below.
 
 ### A. By hand, from chat websites
 
@@ -138,9 +150,10 @@ For chats without an API (free ChatGPT, Claude, Gemini, Duck.ai, ...):
 1. Press one of the **copy** buttons (one per prompt style): the exact prompt
    (instruction and statement) goes to the clipboard.
 2. Paste it into the chat.
-3. Paste the whole answer back, either under **Dodaj jedno** (one solution,
-   with the chat's name in "Model"), or collect many in a text file in the
-   format below and add them at once under **Dodaj wiele**:
+3. Paste the whole answer back in step 3 (**Dodaj odpowiedzi**), with the
+   chat's name in "Model" and the prompt style; only the code is kept. Or
+   collect many in a text file in the format below and add them at once,
+   pasted or uploaded in the same place:
 
    ```
    ### reference problem=abc model="ChatGPT free" prompt=polish
@@ -149,8 +162,8 @@ For chats without an API (free ChatGPT, Claude, Gemini, Duck.ai, ...):
    <the whole answer>
    ```
 
-   `problem` is the short name of the problem (or choose a default problem on
-   the form and leave it out); `model` and `prompt` are labels for you. Values
+   `problem` is the short name of the problem (without it, the answer is for
+   the problem of the page); `model` and `prompt` are labels for you. Values
    with spaces go in quotes.
 
 ### B. With the script, on your own computer
@@ -241,11 +254,11 @@ when run again.
 #### Before each round: run it
 
 1. On the **Referencje LLM** page, download the prompts:
-   - **Pobierz prompty wszystkich zadań**: all problems at once, with the
-     statements as read from their files;
-   - or, after **Wczytaj treść** and checking the text, **Pobierz te prompty
-     dla skryptu**: one problem with the statement as edited, and only the
-     prompt styles ticked.
+   - **Pobierz prompty wszystkich zadań** (at the bottom): all problems at
+     once, with their saved statements (the page warns about statements not
+     checked yet);
+   - or in step 2 of a problem, **Zapisz treść i pobierz te prompty**: that
+     problem, with only the prompt styles ticked.
 2. Run the script with the downloaded file (here 2 answers per model and
    prompt style):
 
@@ -257,8 +270,9 @@ when run again.
    options: `--providers groq,gemini`, `--problems abc,xyz`,
    `--only-prompts plain,student`, `-o other.txt`.
 
-3. On the **Referencje LLM** page, under **Dodaj wiele**, upload
-   `references.txt` (or paste it if it is small) and press **Dodaj**. Answers
+3. On the **Referencje LLM** page, in step 3 of any problem, upload
+   `references.txt` (or paste it if it is small) and press **Dodaj**: each
+   answer goes to the problem named in it. Answers
    already stored are skipped, so uploading the same file again after a later
    run adds only the new ones. If any entry has an error (e.g. an unknown
    problem), nothing is added and the errors are listed.
@@ -283,6 +297,10 @@ models and styles per problem.
   counts 1 on the same day and less on later days). Only contests you
   administer are listed. The first **Przelicz** after ticking them analyses
   those submissions, which takes a while for big contests.
+- Tick **count time from opening the statement** only if participants read
+  the statements in SIO2. With paper statements leave it off: the first
+  opening in SIO2 comes late or never, and honest participants would look
+  suspiciously fast. Off, time counts from the start of the round.
 - Mention the automatic analysis in the camp rules (GDPR: purpose and basis;
   for minors also inform the parents).
 - The **review queue** orders participants by risk; it is recomputed when the
@@ -293,6 +311,23 @@ models and styles per problem.
   score is never a proof. Record the decision; a confirmed submission becomes a
   reference for its problem. Disqualifications go through the existing
   disqualification mechanism.
+- What is **not** held against honest participants, so that the queue shows
+  real cases:
+  - another editor or computer: formatting habits that change together
+    (indentation, braces, spaces) count as one weak change, and a lost
+    template as one change;
+  - the school style: `return 0;` and spaces around operators do not make
+    code look like an LLM's; Polish comments are not counted as English;
+  - being strong: speed is compared with the participant's own usual pace,
+    and solving a hard problem at once weighs less for those who are strong
+    on the other problems;
+  - a shared school template: code a participant also writes for other
+    problems is left out when comparing with other participants and with
+    LLM references;
+  - being copied: a confirmed case is never compared with code sent before
+    it, so the honest author of copied code does not match it;
+  - rewriting a solution presented after the round: style and habit signals
+    count half for submissions after the round.
 - After the camp, delete the data (decisions are kept anonymized):
 
   ```bash
@@ -314,10 +349,13 @@ models and styles per problem.
 - **No "LLM detection" in the menu:** you are a basic admin, or
   `'oioioi.llmdetect'` is not in `INSTALLED_APPS` (restart `web` after editing
   `settings.py`: `docker compose restart web`).
-- **"Problem statement views are not logged"** on the panel: the middleware
-  line from section 4 is missing; timing then counts from the round start.
-- **"Could not read the statement":** the statement is a scanned PDF or an
-  unusual format; paste its text into the box.
+- **"Statement views are not logged"** on the panel: *count time from opening
+  the statement* is on, but the middleware line from section 4 is missing;
+  timing then counts from the round start.
+- **The statement box is empty, or the text is garbled:** the page says why
+  (no statement, a scanned PDF, an error while reading). Paste the text into
+  the box and save it. After uploading a new package, press **Odczytaj
+  ponownie z zadania**.
 - **Uploading fails or the page reports a too large request:** upload the file
   instead of pasting it.
 - **The script says "skipped, ... is not set":** that provider's environment
