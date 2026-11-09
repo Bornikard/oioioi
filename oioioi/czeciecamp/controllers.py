@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone, translation
 from django.utils.translation import gettext_lazy as _
 
+from oioioi.contests.controllers import PastRoundsHiddenContestControllerMixin
 from oioioi.contests.models import ProblemInstance, Submission
 from oioioi.contests.utils import is_contest_basicadmin, is_contest_observer
 from oioioi.czeciecamp.models import (
@@ -178,6 +179,9 @@ class CzecieCampContestController(ProgrammingContestController):
             return True
         rtimes = self.get_round_times(request, problem_instance.round)
         return not rtimes.is_future(request.timestamp)
+
+
+CzecieCampContestController.mix_in(PastRoundsHiddenContestControllerMixin)
 
 
 class CzecieCampRankingController(DefaultRankingController):
