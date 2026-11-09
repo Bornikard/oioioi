@@ -90,7 +90,11 @@ class ScoresRevealContestControllerMixin:
 
     def is_scores_reveals_disabled(self, request, submission):
         problem_instance = submission.problem_instance
-        disable_time = self.get_scores_reveals_disable_time(problem_instance) or 0
+        disable_time = self.get_scores_reveals_disable_time(problem_instance)
+        # Without a disable time revealing is always possible, also for
+        # submissions sent after the round ends.
+        if not disable_time:
+            return False
         round = problem_instance.round
 
         rtimes = self.get_round_times(request, round)

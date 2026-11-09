@@ -258,6 +258,17 @@ class TestScoresAutoReveal(TestCase):
             no_whitespaces_response = re.sub(r"\s*", "", response.content.decode("utf-8"))
             self.assertIn("<td>100</td>", no_whitespaces_response)
 
+    def test_no_disable_time_submitted_after_round(self):
+        ScoreRevealConfig.objects.update(disable_time=None)
+        date = datetime(2012, 8, 10, 10, tzinfo=UTC)
+        Submission.objects.filter(pk=1).update(date=date)
+
+        with fake_time(date):
+            self.assertIn("<td>34</td>", self.no_whitespaces(self.get_submission_page(1)))
+            contest = Contest.objects.get()
+            response = self.client.get(reverse("my_submissions", kwargs={"contest_id": contest.id}))
+            self.assertEqual(response.status_code, 200)
+
 
 class TestRoundStartDelayProperties(TestCase):
     fixtures = [
