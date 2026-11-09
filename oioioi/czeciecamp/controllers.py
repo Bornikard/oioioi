@@ -120,6 +120,13 @@ class CzecieCampContestController(ProgrammingContestController):
         "sent during the round, the all-time ranking counts all submissions sent until the counting end."
     )
 
+    def uses_threshold_linear_scoring(self):
+        return True
+
+    def fill_evaluation_environ(self, environ, submission):
+        super().fill_evaluation_environ(environ, submission)
+        environ["test_scorer"] = "oioioi.programs.utils.threshold_linear_test_scorer"
+
     def registration_controller(self):
         return CzecieCampRegistrationController(self.contest)
 
