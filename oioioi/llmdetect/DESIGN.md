@@ -126,7 +126,7 @@ in [0, 1]; counts are per 100 non-blank lines.
 | | `multiword_ident_ratio` | share in camelCase or snake_case |
 | | `short_ident_ratio` | share with ≤2 characters |
 | | `upper_ident_ratio` | share in UPPER case (longer than 1) |
-| Idioms | `std_qualified_per_100` | `std` tokens (`std::vector`) |
+| Idioms | `std_qualified_per_100` | `std::` prefixes (`std::vector`; not the `std` of `using namespace std`) |
 | | `using_namespace_std` | 0/1 |
 | | `bits_header` | 0/1 `bits/stdc++.h` |
 | | `includes_per_100`, `defines_per_100` | `#include`, `#define` lines |
@@ -182,8 +182,11 @@ llm_style = sigmoid(-2.0 + Σ weight · clip(feature / cap, 0, 1))
 | −0.8 | short_ident_ratio | 0.8 |
 | −0.6 | multi_statement_line_ratio | 0.2 |
 
-The three largest contributions are kept as the explanation ("sentence
-comments, std:: prefixes, multi-word identifiers").
+The explanation gives the score and both sides: up to three features that
+make the code look like LLM code and up to three that make it look unlike it
+("LLM-likeness 5%. Like LLM code: return 0 at the end. Unlike LLM code: using
+namespace std, one- or two-letter identifiers"), so a low score is not
+explained by its few LLM-like features alone.
 
 ### 4.4 Fingerprints (similarity of code)
 
@@ -610,8 +613,9 @@ the participant for a whole-contest disqualification).
   worker once the submission is judged, so the participant never waits.
   Failures are only logged. Anything missing is computed when the panel is
   opened (marked `paste_known = false`). A version number
-  (`FEATURES_VERSION`, now 4) makes stored analyses recompute when the
-  analysis changes; references recompute the same way.
+  (`FEATURES_VERSION`, now 5) makes stored analyses recompute when the
+  analysis changes (the panel then reassesses the contest by itself);
+  references recompute the same way.
 - **Stage 2** runs when the panel is opened and the contest is *dirty* or has
   submissions newer than the last computation; on **Recompute**; or from a
   command (`llmdetect_update CONTEST...`, e.g. from cron). Settings,
