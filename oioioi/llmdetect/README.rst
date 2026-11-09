@@ -47,33 +47,39 @@ Getting references
 
 The server never contacts any LLM. On the *LLM references* page:
 
-* *Load statement* puts the text of a problem's statement (from its
-  PDF/HTML/zip/txt file) in a box to check and edit. The *Copy* buttons put
-  a prompt (one of five styles: plain, in Polish, like a high-school
-  student, like an olympiad competitor, disguised) on the clipboard, to
-  paste into any chat.
-* The prompts can also be downloaded as a JSON file, for one problem (with
-  the edited statement) or for all problems, for ``tools/llm_references.py``
-  (also downloadable from the page). The script runs on a staff member's
-  computer, needs only the Python standard library (plus ``anthropic`` for
-  Claude) and the staff member's own API keys in ``providers.json``. It asks
-  any OpenAI-compatible API (free tiers of OpenRouter, Gemini, Groq,
-  Mistral, GitHub Models, NVIDIA, Cloudflare, a local Ollama, paid APIs) and
-  Claude, one request at a time from whichever provider may be asked, within
-  each one's ``min_interval`` and ``daily_limit``; a provider refusing with
-  429 waits or is left for the next run. Answers are written as they come in
-  the bulk format; run again, it goes on where it stopped.
-* *Add many* takes text in the bulk format (pasted or uploaded)::
+For each problem the page has four steps:
+
+1. *The statement*, read once from the LaTeX source of the Sinol package
+   (``doc/<id>zad.tex``, with the math as LaTeX and the example from the
+   package's ``in/`` and ``out/`` files) or else from the statement file
+   (PDF read with exponents and indices kept, HTML, zip, txt), stored, then
+   checked and edited by the staff.
+2. *Prompts*: *Copy* buttons put a prompt (one of five styles: plain, in
+   Polish, like a high-school student, like an olympiad competitor,
+   disguised) on the clipboard, to paste into any chat; or they are
+   downloaded as a JSON file, for one problem or for all problems, for
+   ``tools/llm_references.py`` (also downloadable from the page). The script
+   runs on a staff member's computer, needs only the Python standard library
+   (plus ``anthropic`` for Claude) and the staff member's own API keys in
+   ``providers.json``. It asks any OpenAI-compatible API (free tiers of
+   OpenRouter, Gemini, Groq, Mistral, GitHub Models, NVIDIA, Cloudflare, a
+   local Ollama, paid APIs) and Claude, one request at a time from whichever
+   provider may be asked, within each one's ``min_interval`` and
+   ``daily_limit``; a provider refusing with 429 waits or is left for the next
+   run. Answers are written as they come in the bulk format; run again, it
+   goes on where it stopped.
+3. *Answers*: one field takes a whole chat answer (only its code is kept),
+   code, files, or many answers in the bulk format::
 
     ### reference problem=abc model="ChatGPT free" prompt=polish
     <code, or a whole chat answer: only its longest code block is kept>
     ### reference problem=xyz model=groq/openai/gpt-oss-120b prompt=student
     ...
 
-  ``problem`` is a short name (or a default problem is chosen on the form),
-  ``model`` and ``prompt`` are labels. Nothing is added when any entry has
-  an error; code already stored for the problem is skipped.
-* *Add one* takes a single solution (files or pasted code).
+   ``problem`` is a short name (without it, the problem of the page),
+   ``model`` and ``prompt`` are labels. Nothing is added when any entry has
+   an error; code already stored for the problem is skipped.
+4. *The references* of the problem, to check or delete.
 
 Free tiers have low daily limits and may use what is sent to train models
 (Google states this for the free Gemini API tier). Statements of a camp

@@ -15,20 +15,15 @@ problem (it may be left out when a default problem is chosen); ``model``
 and ``prompt`` are labels. Other keys are ignored.
 """
 
-import io
 import json
 import re
-import zipfile
 
 from django.utils import timezone
 from django.utils.translation import gettext as _g
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
-from oioioi.problems.utils import query_statement
-
 PROMPTS_FORMAT = "llmdetect-prompts/1"
-MAX_STATEMENT_SIZE = 50 * 1024 * 1024
 # References added in one bulk upload at most.
 MAX_BULK_REFERENCES = 5000
 
@@ -56,51 +51,8 @@ PROMPTS = {
     ),
 }
 
-_HEADER_RE = re.compile(r"^###[ \t]*reference\b(.*)$", re.M | re.I)
+HEADER_RE = re.compile(r"^###[ \t]*reference\b(.*)$", re.M | re.I)
 _ATTRIBUTE_RE = re.compile(r'(\w+)=(?:"([^"]*)"|(\S+))')
-
-
-def statement_text(problem_instance):
-    """Text of the statement of a problem, for the staff to check before
-    using it in a prompt. Empty if there is no statement in a readable format.
-    """
-    statement = query_statement(problem_instance.problem)
-    if statement is None:
-        return ""
-    statement.content.open("rb")
-    try:
-        data = statement.content.read()
-    finally:
-        statement.content.close()
-    return _text_of(data, statement.extension)
-
-
-def _text_of(data, extension):
-    if extension == ".pdf":
-        from pdfminer.high_level import extract_text
-
-        return _clean(extract_text(io.BytesIO(data)))
-    if extension in (".html", ".htm"):
-        from bs4 import BeautifulSoup
-
-        return _clean(BeautifulSoup(data, "html.parser").get_text("\n"))
-    if extension == ".zip":
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            names = sorted(archive.namelist(), key=lambda name: (not name.endswith("index.html"), name))
-            for name in names:
-                inner = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
-                # A member that large is not a statement (or is a zip bomb).
-                if inner in (".html", ".htm", ".pdf", ".txt") and archive.getinfo(name).file_size <= MAX_STATEMENT_SIZE:
-                    return _text_of(archive.read(name), inner)
-        return ""
-    if extension == ".txt":
-        return _clean(data.decode("utf-8", "replace"))
-    return ""
-
-
-def _clean(text):
-    text = text.replace("\r\n", "\n").replace("\x0c", "\n")
-    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def build_prompt(variant, statement):
@@ -167,7 +119,7 @@ def parse_references(text, problems, default_problem=None):
     ``model``, ``prompt``, ``source`` and ``line``; errors are messages.
     """
     text = text.replace("\r\n", "\n")
-    headers = list(_HEADER_RE.finditer(text))
+    headers = list(HEADER_RE.finditer(text))
     errors = []
     references = []
     if not headers:

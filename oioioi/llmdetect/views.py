@@ -11,6 +11,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
@@ -19,9 +20,9 @@ from oioioi.contests.menu import contest_admin_menu_registry
 from oioioi.contests.models import ProblemInstance
 from oioioi.contests.utils import contest_exists, is_contest_admin
 from oioioi.llmdetect.explain import SIGNAL_LABELS, habit_rows, profile_features, signal_rows
-from oioioi.llmdetect.forms import BulkReferencesForm, DecisionForm, PromptsForm, ReferenceForm, SettingsForm
-from oioioi.llmdetect.models import LLMReferenceSolution, ProblemViewEvent, ReviewDecision, RiskAssessment, get_config, mark_dirty
-from oioioi.llmdetect.prompts import PROMPTS, prompts_file, statement_text
+from oioioi.llmdetect.forms import AnswersForm, DecisionForm, SettingsForm, StatementForm, problems_of
+from oioioi.llmdetect.models import LLMReferenceSolution, LLMStatement, ProblemViewEvent, ReviewDecision, RiskAssessment, get_config, mark_dirty
+from oioioi.llmdetect.prompts import PROMPTS, prompts_file
 from oioioi.llmdetect.scoring import (
     FLAG_THRESHOLD,
     SUBMISSION_KINDS,
@@ -32,6 +33,7 @@ from oioioi.llmdetect.scoring import (
     update_if_needed,
     user_rankings,
 )
+from oioioi.llmdetect.statements import statement_text
 from oioioi.programs.models import ProgramSubmission
 
 SCRIPT_PATH = os.path.join(os.path.dirname(__file__), "tools", "llm_references.py")
@@ -136,9 +138,9 @@ def settings_view(request):
     return redirect(_panel_url(request.contest))
 
 
-def _references_url(contest, problem_id=None):
+def _references_url(contest, problem_id=None, anchor=""):
     url = reverse("llmdetect_references", kwargs={"contest_id": contest.id})
-    return f"{url}?problem={problem_id}" if problem_id else url
+    return (f"{url}?problem={problem_id}" if problem_id else url) + anchor
 
 
 def _download(content, filename, content_type):
@@ -161,7 +163,7 @@ def _save_references(request, references):
             problem_instance=reference["problem_instance"],
             model_name=reference["model"],
             prompt_variant=reference["prompt"],
-            filename=f"bulk_line_{reference['line']}.cpp",
+            filename=reference.get("filename") or f"bulk_line_{reference['line']}.cpp",
             source=reference["source"],
             added_by=request.user,
         )
@@ -171,84 +173,99 @@ def _save_references(request, references):
     return added, skipped
 
 
+def _statement(pi, reread=False):
+    """The stored statement text of a problem, read from its package or
+    statement file the first time (reading a package takes a while).
+    """
+    statement = LLMStatement.objects.filter(problem_instance=pi).first()
+    if statement is not None and not reread:
+        return statement
+    text, source, warnings = statement_text(pi)
+    if statement is None:
+        statement = LLMStatement(problem_instance=pi)
+    statement.text, statement.source, statement.warnings, statement.checked = text, source or "", warnings, False
+    statement.updated_at = timezone.now()
+    statement.updated_by = None
+    statement.save()
+    return statement
+
+
 @enforce_condition(contest_exists & is_contest_admin)
 def references_view(request):
     contest = request.contest
-    problem = request.GET.get("problem")
-    action = request.POST.get("action", "upload")
-    # Two forms have a problem field: keep their HTML ids apart.
-    form = ReferenceForm(contest=contest, initial={"problem_instance": problem}, auto_id="one-%s")
-    prompts_form = PromptsForm(contest=contest, initial={"problem_instance": problem})
-    bulk_form = BulkReferencesForm(contest=contest, initial={"default_problem": problem}, auto_id="bulk-%s")
-    if request.method == "POST" and action == "upload":
-        form = ReferenceForm(request.POST, request.FILES, contest=contest, auto_id="one-%s")
-        if form.is_valid():
-            data = form.cleaned_data
-            for filename, source in data["sources"]:
-                LLMReferenceSolution.objects.create(
-                    problem_instance=data["problem_instance"],
-                    model_name=data["model_name"],
-                    prompt_variant=data["prompt_variant"],
-                    filename=filename,
-                    source=source,
-                    added_by=request.user,
-                )
-            mark_dirty(contest)
-            messages.success(request, _("Added %(count)d references.") % {"count": len(data["sources"])})
-            return redirect(_references_url(contest, data["problem_instance"].id))
-    elif request.method == "POST" and action == "bulk":
-        bulk_form = BulkReferencesForm(request.POST, request.FILES, contest=contest, auto_id="bulk-%s")
-        if bulk_form.is_valid():
-            added, skipped = _save_references(request, bulk_form.cleaned_data["references"])
+    problems = list(problems_of(contest))
+    if not problems:
+        return TemplateResponse(request, "llmdetect/references.html", {"problems": []})
+    wanted = request.GET.get("problem") or request.POST.get("problem")
+    pi = next((p for p in problems if str(p.id) == wanted), problems[0])
+    action = request.POST.get("action")
+
+    if request.method == "POST" and action == "reread":
+        _statement(pi, reread=True)
+        messages.success(request, _("The statement was read again."))
+        return redirect(_references_url(contest, pi.id, "#statement"))
+    statement = _statement(pi)
+    statement_form = StatementForm(initial={"text": statement.text})
+    answers_form = AnswersForm(contest=contest, problem_instance=pi, auto_id="answer-%s")
+    if request.method == "POST" and action == "statement":
+        statement_form = StatementForm(request.POST)
+        if statement_form.is_valid():
+            data = statement_form.cleaned_data
+            if data["text"] != statement.text:
+                statement.source = LLMStatement.SOURCE_EDITED
+            statement.text, statement.checked = data["text"], True
+            statement.updated_at, statement.updated_by = timezone.now(), request.user
+            statement.save()
+            if "download" in request.POST:
+                if not data["prompts"]:
+                    messages.error(request, _("Choose the prompts to download."))
+                    return redirect(_references_url(contest, pi.id, "#prompts"))
+                content = prompts_file(contest, {pi.short_name: statement.text}, data["prompts"])
+                return _download(content, f"prompts-{contest.id}-{pi.short_name}.json", "application/json")
+            messages.success(request, _("The statement was saved."))
+            return redirect(_references_url(contest, pi.id, "#statement"))
+    elif request.method == "POST" and action == "answers":
+        answers_form = AnswersForm(request.POST, request.FILES, contest=contest, problem_instance=pi, auto_id="answer-%s")
+        if answers_form.is_valid():
+            added, skipped = _save_references(request, answers_form.cleaned_data["references"])
             message = _("Added %(count)d references.") % {"count": added}
             if skipped:
                 message += " " + _("Skipped %(count)d already stored.") % {"count": skipped}
             messages.success(request, message)
-            return redirect(_references_url(contest, problem) + "#bulk")
-    elif request.method == "POST" and action == "prompts":
-        prompts_form = PromptsForm(request.POST, contest=contest)
-        if prompts_form.is_valid():
-            data = prompts_form.cleaned_data
-            pi = data["problem_instance"]
-            content = prompts_file(contest, {pi.short_name: data["statement"]}, data["prompts"])
-            return _download(content, f"prompts-{contest.id}-{pi.short_name}.json", "application/json")
+            return redirect(_references_url(contest, pi.id, "#references"))
     elif request.method == "POST":
         raise PermissionDenied
-    elif problem and request.GET.get("statement"):
-        pi = get_object_or_404(ProblemInstance, id=problem, contest=contest)
-        text = _statement_or_empty(pi)
-        if not text:
-            messages.warning(request, _("Could not read the statement of this problem; paste its text."))
-        prompts_form = PromptsForm(contest=contest, initial={"problem_instance": pi.id, "statement": text})
 
-    references = LLMReferenceSolution.objects.filter(problem_instance__contest=contest).select_related("problem_instance")
-    if problem:
-        references = references.filter(problem_instance_id=problem)
+    counts = Counter(LLMReferenceSolution.objects.filter(problem_instance__contest=contest).values_list("problem_instance_id", flat=True))
+    checked = set(LLMStatement.objects.filter(problem_instance__contest=contest, checked=True).values_list("problem_instance_id", flat=True))
     context = {
-        "form": form,
-        "prompts_form": prompts_form,
-        "bulk_form": bulk_form,
-        "references": references,
+        "problems": [{"pi": p, "references": counts.get(p.id, 0), "checked": p.id in checked} for p in problems],
+        "pi": pi,
+        "statement": statement,
+        "statement_form": statement_form,
+        "answers_form": answers_form,
+        "references": _with_prompt_labels(LLMReferenceSolution.objects.filter(problem_instance=pi).select_related("added_by").order_by("-id")),
         "prompts": [(key, label, instruction) for key, (label, instruction) in PROMPTS.items()],
-        "problem": problem,
+        "unchecked": len(problems) - len(checked),
     }
     return TemplateResponse(request, "llmdetect/references.html", context)
 
 
-def _statement_or_empty(pi):
-    try:
-        return statement_text(pi)
-    except Exception:
-        return ""
+def _with_prompt_labels(references):
+    references = list(references)
+    for reference in references:
+        prompt = PROMPTS.get(reference.prompt_variant)
+        reference.prompt_label = prompt[0] if prompt else reference.prompt_variant
+    return references
 
 
 @enforce_condition(contest_exists & is_contest_admin)
 def all_prompts_view(request):
-    """Prompts for every problem whose statement can be read, for the script."""
+    """Prompts for every problem with a statement text, for the script."""
     contest = request.contest
     statements = {}
-    for pi in ProblemInstance.objects.filter(contest=contest).order_by("round__start_date", "short_name"):
-        text = _statement_or_empty(pi)
+    for pi in problems_of(contest):
+        text = _statement(pi).text
         if text:
             statements[pi.short_name] = text
     content = prompts_file(contest, statements, list(PROMPTS))
@@ -269,7 +286,7 @@ def delete_reference_view(request, reference_id):
     reference.delete()
     mark_dirty(request.contest)
     messages.success(request, _("Reference deleted."))
-    return redirect(f"{reverse('llmdetect_references', kwargs={'contest_id': request.contest.id})}?problem={problem_id}")
+    return redirect(_references_url(request.contest, problem_id, "#references"))
 
 
 def _source_or_none(submission):
