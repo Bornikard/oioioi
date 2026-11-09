@@ -1,3 +1,4 @@
+import importlib
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -180,12 +181,45 @@ class TestCampRankings(CampTestCase):
         self.assertTrue(data["is_aggregate"])
         self.assertFalse(self._ranking(self._round_ranking(self.round1))["is_aggregate"])
 
-    def test_round_without_results_is_hidden(self):
-        self.round2.results_date = None
+    def test_round_not_published_is_hidden(self):
+        # Personal results are shown, but the round is not published in rankings.
+        self.round2.public_results_date = None
         self.round2.save()
         self._submit(self.user1, self.pi2, _date(2, hour=1), 100)
         self.assertEqual(self._row(self._ranking(self.main), self.user1)["sum"], 0)
         self.assertEqual(self._row(self._ranking(self.main, "admin"), self.user1)["sum"], 200)
+
+    def test_results_visible_during_round_do_not_publish_in_rankings(self):
+        config = get_camp_config(self.contest)
+        config.results_visible_during_round = True
+        config.save()
+        self.round2.results_date = None
+        self.round2.public_results_date = None
+        self.round2.save()
+        self._submit(self.user1, self.pi2, _date(2, hour=1), 100)
+        self.assertEqual(self._row(self._ranking(self.main), self.user1)["sum"], 0)
+        self.round2.public_results_date = _date(2, hour=6)
+        self.round2.results_date = _date(2, hour=6)
+        self.round2.save()
+        self.assertEqual(self._row(self._ranking(self.main), self.user1)["sum"], 200)
+
+    def test_round_ranking_listed_once_published(self):
+        self.round2.public_results_date = None
+        self.round2.save()
+        keys = [key for key, _name in self._available_rankings()]
+        self.assertNotIn(str(self._round_ranking(self.round2).id), keys)
+        self.assertIn(str(self._round_ranking(self.round1).id), keys)
+        self.round2.public_results_date = _date(2, hour=6)
+        self.round2.save()
+        keys = [key for key, _name in self._available_rankings()]
+        self.assertIn(str(self._round_ranking(self.round2).id), keys)
+
+    def test_new_rankings_are_visible(self):
+        new_round = Round.objects.create(contest=self.contest, name="Runda 3", start_date=_date(3), end_date=_date(3, hour=5))
+        ranking = CampRanking.objects.create(contest=self.contest, name="Finał", daily_weight=1, stale_weight=0)
+        for public_date in (self._round_ranking(new_round).public_date, ranking.public_date):
+            self.assertIsNotNone(public_date)
+            self.assertLessEqual(public_date, timezone.now())
 
     def _available_rankings(self):
         request = RequestFactory().get("/")
@@ -443,6 +477,33 @@ class TestCampPanel(CampTestCase):
         self.client.post(self._url("czeciecamp_round_action", round_id=self.round2.id, action="hide_results"))
         self.round2.refresh_from_db()
         self.assertIsNone(self.round2.results_date)
+        # Hiding personal results takes the round out of rankings too.
+        self.assertIsNone(self.round2.public_results_date)
+
+    def test_round_ranking_buttons(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.round2.results_date = None
+        self.round2.public_results_date = None
+        self.round2.save()
+        with fake_time(_date(2, hour=6, minute=4)):
+            self.client.post(self._url("czeciecamp_round_action", round_id=self.round2.id, action="show_in_rankings"))
+        self.round2.refresh_from_db()
+        self.assertEqual(self.round2.public_results_date, _date(2, hour=6))
+        # Publishing in rankings shows personal results too.
+        self.assertEqual(self.round2.results_date, _date(2, hour=6))
+        self.client.post(self._url("czeciecamp_round_action", round_id=self.round2.id, action="hide_in_rankings"))
+        self.round2.refresh_from_db()
+        self.assertIsNone(self.round2.public_results_date)
+        self.assertEqual(self.round2.results_date, _date(2, hour=6))
+
+    def test_publish_keeps_earlier_personal_results(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.round2.public_results_date = None
+        self.round2.save()
+        with fake_time(_date(3)):
+            self.client.post(self._url("czeciecamp_round_action", round_id=self.round2.id, action="show_in_rankings"))
+        self.round2.refresh_from_db()
+        self.assertEqual((self.round2.results_date, self.round2.public_results_date), (_date(2, hour=5), _date(3)))
 
     def test_ranking_buttons(self):
         self.assertTrue(self.client.login(username="test_admin"))
@@ -450,13 +511,15 @@ class TestCampPanel(CampTestCase):
         ranking.public_date = None
         ranking.save()
         self.round2.results_date = None
+        self.round2.public_results_date = None
         self.round2.save()
         with fake_time(_date(2, hour=6, minute=4)):
             self.client.post(self._url("czeciecamp_ranking_action", ranking_id=ranking.id, action="show"))
         ranking.refresh_from_db()
         self.round2.refresh_from_db()
         self.assertEqual(ranking.public_date, _date(2, hour=6))
-        # Showing the ranking of a round shows its results too.
+        # Showing the ranking of a round publishes the round in rankings.
+        self.assertEqual(self.round2.public_results_date, _date(2, hour=6))
         self.assertEqual(self.round2.results_date, _date(2, hour=6))
         self.client.post(self._url("czeciecamp_ranking_action", ranking_id=ranking.id, action="hide"))
         ranking.refresh_from_db()
@@ -583,6 +646,7 @@ class TestCampPanel(CampTestCase):
         self.assertEqual(new_round.end_date, timezone.make_aware(datetime(2020, 8, 4, 14, 0)))
         self.assertTrue(new_round.is_trial)
         self.assertEqual(new_round.results_date, new_round.start_date)
+        self.assertEqual(new_round.public_results_date, new_round.start_date)
         self.assertNotIn(new_round.id, get_camp_config(self.contest).excluded_rounds)
 
     def test_add_round_not_counted(self):
@@ -795,6 +859,33 @@ class TestMakeContestId(TestCase):
     def test_make_contest_id(self):
         self.assertEqual(make_contest_id("Obóz OI – grupa starsza"), "oboz-oi-grupa-starsza")
         self.assertEqual(make_contest_id("Łódź 2026"), "lodz-2026")
+
+
+class TestPublishRoundsMigration(CampTestCase):
+    def _migrate(self):
+        from django.apps import apps
+
+        migration = importlib.import_module("oioioi.czeciecamp.migrations.0013_publish_rounds_in_rankings")
+        migration.publish_rounds_as_before(apps, None)
+        for round in (self.round1, self.round2):
+            round.refresh_from_db()
+
+    def test_results_date_becomes_public(self):
+        self.round2.results_date = None
+        self.round2.save()
+        self._migrate()
+        self.assertEqual(self.round1.public_results_date, _date(1, hour=5))
+        self.assertIsNone(self.round2.public_results_date)
+
+    def test_results_visible_during_round(self):
+        config = get_camp_config(self.contest)
+        config.results_visible_during_round = True
+        config.save()
+        self.round2.results_date = None
+        self.round2.save()
+        self._migrate()
+        self.assertEqual((self.round1.results_date, self.round1.public_results_date), (_date(1), _date(1)))
+        self.assertEqual((self.round2.results_date, self.round2.public_results_date), (_date(2), _date(2)))
 
 
 class TestResultsVisibleDuringRound(CampTestCase):

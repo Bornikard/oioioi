@@ -19,7 +19,7 @@ from oioioi.base.permissions import enforce_condition, is_superuser, make_reques
 from oioioi.contests.menu import contest_admin_menu_registry
 from oioioi.contests.models import Contest, ProblemInstance, Round
 from oioioi.contests.utils import contest_exists, is_contest_admin, is_contest_basicadmin
-from oioioi.czeciecamp.controllers import CzecieCampContestController, get_freeze_date, get_last_round_end, is_frozen
+from oioioi.czeciecamp.controllers import CzecieCampContestController, get_freeze_date, get_last_round_end, is_frozen, round_in_rankings
 from oioioi.czeciecamp.forms import AddParticipantsForm, CampSettingsForm, CreateCampForm, FreezeDateForm, RankingForm, RoundForm
 from oioioi.czeciecamp.models import (
     CONTROLLER_NAME,
@@ -103,6 +103,7 @@ def _round_rows(contest, config, now):
                     counted=round.id not in config.excluded_rounds,
                 ),
                 "results_visible": round.results_date is not None and round.results_date <= now,
+                "in_rankings": round_in_rankings(round, now),
             }
         )
     return rows
@@ -210,6 +211,15 @@ def panel_view(request):
     return TemplateResponse(request, "czeciecamp/panel.html", context)
 
 
+def publish_in_rankings(round, now):
+    """Publishes a round in rankings; its personal results are shown too,
+    as they cannot come later than the public ones.
+    """
+    round.public_results_date = now
+    if round.results_date is None or round.results_date > now:
+        round.results_date = now
+
+
 @require_POST
 @enforce_condition(contest_exists & is_contest_basicadmin & is_czecie_camp)
 def round_action_view(request, round_id, action):
@@ -220,6 +230,12 @@ def round_action_view(request, round_id, action):
         round.results_date = now
     elif action == "hide_results":
         round.results_date = None
+        # A round is never in rankings before its personal results are shown.
+        round.public_results_date = None
+    elif action == "show_in_rankings":
+        publish_in_rankings(round, now)
+    elif action == "hide_in_rankings":
+        round.public_results_date = None
     else:
         raise PermissionDenied
     round.save()
@@ -249,8 +265,8 @@ def add_round_view(request):
     if form.is_valid():
         round = form.save(commit=False)
         if round.is_trial:
-            # Results of an "All-time" round are visible right away.
-            round.results_date = round.start_date
+            # Results of an "All-time" round are visible right away, also in rankings.
+            round.results_date = round.public_results_date = round.start_date
         round.save()
         config = get_camp_config(contest)
         config.round_order = [r.id for r in ordered_rounds(contest)]
@@ -382,9 +398,9 @@ def ranking_action_view(request, ranking_id, action):
     if action == "show":
         ranking.public_date = now
         round = ranking.round
-        # The ranking of a round shows only rounds with results.
-        if round is not None and not get_camp_config(contest).results_visible_during_round and (round.results_date is None or round.results_date > now):
-            round.results_date = now
+        # The ranking of a round is shown only once the round is published in rankings.
+        if round is not None and not round_in_rankings(round, now):
+            publish_in_rankings(round, now)
             round.save()
         ranking.save()
     elif action == "hide":
@@ -435,8 +451,10 @@ def create_camp_view(request):
             contest.camp_rankings.all().delete()
             create_default_rankings(contest, data["daily_weight"], data["stale_weight"])
             # Rounds get their own rankings when they are created.
-            # Day 0 is an "All-time" round; its results are visible right away.
-            Round.objects.create(contest=contest, name=day_name(0), start_date=start, end_date=start, results_date=start, is_trial=True)
+            # Day 0 is an "All-time" round; its results are visible right away, also in rankings.
+            Round.objects.create(
+                contest=contest, name=day_name(0), start_date=start, end_date=start, results_date=start, public_results_date=start, is_trial=True
+            )
             for day in range(1, data["days"] + 1):
                 day_start = start + timedelta(days=day)
                 Round.objects.create(contest=contest, name=day_name(day), start_date=day_start, end_date=day_start)

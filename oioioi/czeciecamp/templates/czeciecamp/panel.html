@@ -33,7 +33,8 @@
             <th>{% trans "End" %}</th>
             <th>{% trans "Type" %}</th>
             <th title="{% trans 'Counted in the rankings that have no rounds selected.' %}">{% trans "Counted" %}</th>
-            <th>{% trans "Results" %}</th>
+            <th title="{% trans 'Participants see the scores of their own submissions.' %}">{% trans "Personal results" %}</th>
+            <th title="{% trans 'The round is shown in the rankings of participants.' %}">{% trans "In rankings" %}</th>
             <th></th>
         </tr>
     </thead>
@@ -67,6 +68,18 @@
                     </form>
                     {% endif %}
                 </td>
+                <td class="text-nowrap">
+                    <form method="post" action="{% url 'czeciecamp_round_action' contest_id=contest.id round_id=round.id action=row.in_rankings|yesno:'hide_in_rankings,show_in_rankings' %}" class="d-inline">
+                        {% csrf_token %}
+                        {% if row.in_rankings %}
+                            <span class="text-success">✔</span>
+                            <button type="submit" class="btn btn-link btn-sm p-0 ms-1">{% trans "hide" %}</button>
+                        {% else %}
+                            {% if round.public_results_date %}<span class="text-muted small">{{ round.public_results_date|date:"d.m H:i" }}</span>{% endif %}
+                            <button type="submit" class="btn btn-sm btn-primary">{% trans "Publish" %}</button>
+                        {% endif %}
+                    </form>
+                </td>
                 <td class="text-end">
                     <form method="post" action="{% url 'czeciecamp_delete_round' contest_id=contest.id round_id=round.id %}"
                           onsubmit="return confirm('{% blocktrans with name=round.name|escapejs %}Delete {{ name }}? Its problems stay in the contest without a round.{% endblocktrans %}');">
@@ -77,7 +90,7 @@
             </tr>
             {% endwith %}
         {% empty %}
-            <tr><td colspan="8" class="text-muted">{% trans "No rounds yet." %}</td></tr>
+            <tr><td colspan="9" class="text-muted">{% trans "No rounds yet." %}</td></tr>
         {% endfor %}
         {% with form=new_round_form %}
         <tr class="table-light">
@@ -87,7 +100,7 @@
             <td>{{ form.end_date }}</td>
             <td>{{ form.is_trial }}</td>
             <td class="text-center">{{ form.counted }}</td>
-            <td colspan="2">
+            <td colspan="3">
                 <form method="post" id="new-round-form" action="{% url 'czeciecamp_add_round' contest_id=contest.id %}">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-primary">{% trans "Add round" %}</button>
@@ -105,6 +118,7 @@
     <span class="text-warning small d-none js-unsaved">{% trans "Unsaved changes" %}</span>
 </form>
 {% endif %}
+<p class="form-text">{% trans "Rankings are visible to participants, but a round appears in them (and gets its own ranking) only after you publish it in rankings. Publishing shows the personal results of the round too." %}</p>
 <script>
 (function () {
     var form = document.getElementById("rounds-form");

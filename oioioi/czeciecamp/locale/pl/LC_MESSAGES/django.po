@@ -472,3 +472,18 @@ msgstr "zdyskwalifikowany"
 
 msgid "A submission to this problem is disqualified; the problem counts 0."
 msgstr "Zgłoszenie do tego zadania jest zdyskwalifikowane; zadanie liczy się za 0."
+
+msgid "Personal results"
+msgstr "Wyniki osobiste"
+
+msgid "Publish"
+msgstr "Opublikuj"
+
+msgid "Participants see the scores of their own submissions."
+msgstr "Uczestnicy widzą wyniki swoich zgłoszeń."
+
+msgid "The round is shown in the rankings of participants."
+msgstr "Runda jest pokazywana uczestnikom w rankingach."
+
+msgid "Rankings are visible to participants, but a round appears in them (and gets its own ranking) only after you publish it in rankings. Publishing shows the personal results of the round too."
+msgstr "Rankingi są widoczne dla uczestników, ale runda pojawia się w nich (i dostaje własny ranking) dopiero po opublikowaniu jej w rankingach. Opublikowanie pokazuje też wyniki osobiste tej rundy."

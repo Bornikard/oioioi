@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from oioioi.base.utils.deps import check_django_app_dependencies
@@ -116,7 +117,10 @@ class CampRanking(models.Model):
         verbose_name=_("Daily counts the"),
         help_text=_("Of the submissions sent during the round. All-time always counts the best one."),
     )
+    # Rankings are visible by default; what participants see in them is
+    # decided by publishing rounds (their public results date).
     public_date = models.DateTimeField(
+        default=timezone.now,
         null=True,
         blank=True,
         verbose_name=_("visible for participants from"),

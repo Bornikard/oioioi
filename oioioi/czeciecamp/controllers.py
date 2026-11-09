@@ -95,13 +95,12 @@ def best_submissions(submissions, pi_by_id, counting_end, stale_end, last_daily,
     return best_daily, best_stale
 
 
-def round_in_rankings(round, config, timestamp):
-    """Participants see a round in rankings once its results are shown
-    (or once it starts, if results are visible during rounds).
+def round_in_rankings(round, timestamp):
+    """Participants see a round in rankings once it is published in them
+    (its public results date). Personal results are shown separately
+    (the results date, or right away if results are visible during rounds).
     """
-    if config.results_visible_during_round:
-        return round.start_date <= timestamp
-    return round.results_date is not None and round.results_date <= timestamp
+    return round.public_results_date is not None and round.public_results_date <= timestamp
 
 
 class CzecieCampRegistrationController(ParticipantsController):
@@ -216,7 +215,7 @@ class CzecieCampRankingController(DefaultRankingController):
         if permission in PRIVILEGED_PERMISSIONS:
             return "all"
         config = get_camp_config(self.contest)
-        rounds = sorted(r.id for r in self.contest.round_set.all() if round_in_rankings(r, config, timestamp))
+        rounds = sorted(r.id for r in self.contest.round_set.all() if round_in_rankings(r, timestamp))
         tag = "r" + "-".join(map(str, rounds))
         if is_frozen(self.contest, config, timestamp):
             tag += "f"
@@ -228,15 +227,22 @@ class CzecieCampRankingController(DefaultRankingController):
         return CampRanking.objects.filter(contest=self.contest, id=partial_key).first()
 
     def _visible_rounds(self, ranking, can_see_all, timestamp):
-        config = get_camp_config(self.contest)
-        return [r for r in ranking.get_rounds() if can_see_all or round_in_rankings(r, config, timestamp)]
+        return [r for r in ranking.get_rounds() if can_see_all or round_in_rankings(r, timestamp)]
 
     def available_rankings(self, request):
+        """Rankings shown to participants; the ranking of a round appears
+        only once the round is published in rankings.
+        """
         can_see_all = is_contest_basicadmin(request) or is_contest_observer(request)
         return [
             (str(ranking.id), ranking.name)
             for ranking in ordered_rankings(self.contest)
-            if can_see_all or (ranking.public_date is not None and ranking.public_date <= request.timestamp)
+            if can_see_all
+            or (
+                ranking.public_date is not None
+                and ranking.public_date <= request.timestamp
+                and (ranking.round_id is None or round_in_rankings(ranking.round, request.timestamp))
+            )
         ]
 
     def partial_keys_for_probleminstance(self, pi):
