@@ -95,7 +95,7 @@ def _test_names(problem_ids):
     return names
 
 
-def _problem_pairs():
+def problem_pairs():
     """Yield (problem_a, problem_b, kind, value) for every signal between two problems."""
     fingerprints = list(ProblemFingerprint.objects.values_list("problem_id", "solution_hashes", "statement_text"))
 
@@ -136,12 +136,15 @@ def _problem_pairs():
 
 def find_clusters():
     """Groups of families that look like one task, strongest first."""
-    family_of = dict(ProblemFamilyMember.objects.values_list("problem_id", "family_id"))
+    from oioioi.problembase.rejection import rejected_problem_ids
+
+    rejected = rejected_problem_ids()
+    family_of = {p: f for p, f in ProblemFamilyMember.objects.values_list("problem_id", "family_id") if p not in rejected}
     dismissed = set(NotSameProblem.objects.values_list("problem_a_id", "problem_b_id"))
 
     edges = defaultdict(Evidence)
     name_pairs = set()
-    for a, b, kind, value in _problem_pairs():
+    for a, b, kind, value in problem_pairs():
         if (a, b) in dismissed or a not in family_of or b not in family_of:
             continue
         fa, fb = family_of[a], family_of[b]

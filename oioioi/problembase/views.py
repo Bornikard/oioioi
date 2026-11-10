@@ -25,6 +25,7 @@ from oioioi.problembase.models import (
     merge_families,
     unlink_problem,
 )
+from oioioi.problembase.rejection import auto_reject, rejected_problem_ids
 from oioioi.problembase.seen import SUBMITTED, build_ban, seen_by
 from oioioi.problembase.similarity import find_clusters
 from oioioi.problems.models import Problem, ProblemPackage
@@ -44,17 +45,26 @@ class Use:
 class FamilyRow:
     family: ProblemFamily
     problems: list = field(default_factory=list)
+    rejected: list = field(default_factory=list)
     uses: list = field(default_factory=list)
     description: ProblemDescription | None = None
     seen: dict = field(default_factory=dict)  # user_id -> {contest_id: how}
 
     @property
+    def all_rejected(self):
+        return not self.problems
+
+    @property
+    def shown(self):
+        return self.problems or self.rejected
+
+    @property
     def name(self):
-        return self.problems[-1].name if self.problems else ""
+        return self.shown[-1].name if self.shown else ""
 
     @property
     def short_names(self):
-        return sorted({p.short_name for p in self.problems})
+        return sorted({p.short_name for p in self.shown})
 
     @property
     def contests(self):
@@ -76,13 +86,14 @@ def problem_url(problem, instances=()):
     return None
 
 
-def _family_rows(family_ids):
+def _family_rows(family_ids, rejected=frozenset()):
     rows = {fid: FamilyRow(family=family) for fid, family in ProblemFamily.objects.in_bulk(family_ids).items()}
     members = ProblemFamilyMember.objects.filter(family_id__in=family_ids).select_related("problem__problemsite").prefetch_related("problem__names")
     members = members.order_by("problem_id")
     family_of = {}
     for member in members:
-        rows[member.family_id].problems.append(member.problem)
+        row = rows[member.family_id]
+        (row.rejected if member.problem_id in rejected else row.problems).append(member.problem)
         family_of[member.problem_id] = member.family_id
     instances = ProblemInstance.objects.filter(problem_id__in=family_of, contest__isnull=False).select_related("contest", "round")
     for pi in instances:
@@ -137,6 +148,8 @@ def family_list_view(request):
     ban, logins = _ban_from_request(request)
     query = request.GET.get("q", "").strip()
     hide_seen = bool(request.GET.get("hide_seen")) and bool(ban)
+    show_rejected = bool(request.GET.get("show_rejected"))
+    rejected = rejected_problem_ids()
 
     problems = Problem.objects.all()
     if query:
@@ -148,12 +161,20 @@ def family_list_view(request):
             | Q(probleminstance__contest__id__iexact=query)
         )
     matching = set(ProblemFamilyMember.objects.filter(problem__in=problems.values("id")).values_list("family_id", flat=True))
-    names = {}
+    names, rejected_names, kept_families = {}, {}, set()
     for member in (
         ProblemFamilyMember.objects.filter(family_id__in=matching).select_related("problem").prefetch_related("problem__names").order_by("problem_id")
     ):
-        names[member.family_id] = member.problem.name  # the newest upload wins
-    family_ids = sorted(matching, key=lambda fid: (names.get(fid, "").lower(), fid))
+        # the newest upload wins
+        if member.problem_id in rejected:
+            rejected_names[member.family_id] = member.problem.name
+        else:
+            names[member.family_id] = member.problem.name
+            kept_families.add(member.family_id)
+    rejected_families = matching - kept_families
+    if not show_rejected:
+        matching = kept_families
+    family_ids = sorted(matching, key=lambda fid: (names.get(fid, rejected_names.get(fid, "")).lower(), fid))
 
     seen_family_ids = set()
     if ban:
@@ -162,7 +183,7 @@ def family_list_view(request):
             family_ids = [fid for fid in family_ids if fid not in seen_family_ids]
 
     page = Paginator(family_ids, FAMILIES_PER_PAGE).get_page(request.GET.get("page"))
-    rows = _family_rows(list(page.object_list))
+    rows = _family_rows(list(page.object_list), rejected)
     if ban:
         _attach_seen(rows, ban)
 
@@ -174,9 +195,13 @@ def family_list_view(request):
         "page_query": page_query.urlencode(),
         "query": query,
         "hide_seen": hide_seen,
+        "show_rejected": show_rejected,
+        "rejected_count": len(rejected_families),
         "family_count": len(family_ids),
         "seen_count": len(seen_family_ids),
-        "keep_for_ban": [(key, value) for key, value in (("q", query), ("hide_seen", "1" if hide_seen else "")) if value],
+        "keep_for_ban": [
+            (key, value) for key, value in (("q", query), ("hide_seen", "1" if hide_seen else ""), ("show_rejected", "1" if show_rejected else "")) if value
+        ],
     }
     context.update(_ban_context(request, ban, logins))
     return TemplateResponse(request, "problembase/list.html", context)
@@ -210,11 +235,13 @@ def family_view(request, family_id):
         form = DescriptionForm(instance=description)
 
     ban, logins = _ban_from_request(request)
-    row = _family_rows([family.id])[0]
+    rejected = rejected_problem_ids()
+    row = _family_rows([family.id], rejected)[0]
     if ban:
         _attach_seen([row], ban)
 
-    problem_ids = [p.id for p in row.problems]
+    statuses = dict(ProblemFamilyMember.objects.filter(family=family).values_list("problem_id", "status"))
+    problem_ids = [p.id for p in row.problems + row.rejected]
     fingerprints = ProblemFingerprint.objects.in_bulk(problem_ids)
     hash_count = defaultdict(int)
     for fp in fingerprints.values():
@@ -228,7 +255,7 @@ def family_view(request, family_id):
         uploads[package.problem_id] = package.creation_date
 
     packages = []
-    for problem in row.problems:
+    for problem in row.problems + row.rejected:
         fp = fingerprints.get(problem.id)
         if fp is None:
             solution = None
@@ -244,7 +271,9 @@ def family_view(request, family_id):
                 "url": problem_url(problem, instances),
                 "instances": instances,
                 "uploaded": uploads.get(problem.id),
-                "solution": solution if len(row.problems) > 1 else None,
+                "solution": solution if len(problem_ids) > 1 else None,
+                "rejected": problem.id in rejected,
+                "auto": statuses.get(problem.id) == "auto",
             }
         )
 
@@ -308,8 +337,10 @@ def unlink_view(request, problem_id):
 @enforce_condition(is_superuser)
 def suggestions_view(request):
     ensure_families()
+    auto_reject()
     clusters = find_clusters()
-    rows = {row.family.id: row for row in _family_rows([fid for c in clusters for fid in c.family_ids])}
+    rejected = rejected_problem_ids()
+    rows = {row.family.id: row for row in _family_rows([fid for c in clusters for fid in c.family_ids], rejected)}
     items = []
     for cluster in clusters:
         families = [rows[fid] for fid in cluster.family_ids if fid in rows]
@@ -318,7 +349,7 @@ def suggestions_view(request):
         index = {row.family.id: i + 1 for i, row in enumerate(families)}
         edges = [{"a": index[a], "b": index[b], "evidence": e} for (a, b), e in sorted(cluster.edges.items()) if a in index and b in index]
         items.append({"cluster": cluster, "families": families, "edges": edges})
-    for item, following in zip(items, items[1:] + [None], strict=True):
+    for item, following in zip(items, [*items[1:], None], strict=False):
         item["next"] = following["families"][0].family.id if following else None
     certain = sum(1 for item in items if item["cluster"].certain)
 
@@ -336,6 +367,7 @@ def suggestions_view(request):
         "certain_count": certain,
         "fingerprinted": fingerprinted,
         "problem_count": len(family_of),
+        "rejected_count": len(rejected),
     }
     return TemplateResponse(request, "problembase/suggestions.html", context)
 
@@ -377,6 +409,41 @@ def merge_certain_view(request):
             merged += 1
     messages.success(request, gettext("Merged %d groups with identical model solutions.") % merged)
     return redirect("problembase_suggestions")
+
+
+def _set_status(problem_ids, status):
+    ProblemFamilyMember.objects.filter(problem_id__in=problem_ids).update(status=status)
+
+
+@require_POST
+@enforce_condition(is_superuser)
+def reject_view(request, problem_id):
+    member = get_object_or_404(ProblemFamilyMember, problem_id=problem_id)
+    _set_status([problem_id], "rejected")
+    messages.success(request, _("Package rejected."))
+    return redirect(_family_url(member.family, request))
+
+
+@require_POST
+@enforce_condition(is_superuser)
+def restore_view(request, problem_id):
+    member = get_object_or_404(ProblemFamilyMember, problem_id=problem_id)
+    _set_status([problem_id], "kept")
+    messages.success(request, _("Package restored."))
+    return redirect(_family_url(member.family, request))
+
+
+@require_POST
+@enforce_condition(is_superuser)
+def reject_family_view(request, family_id):
+    """Reject all packages of a family (from a merge suggestion)."""
+    rejected = rejected_problem_ids()
+    problem_ids = [p for p in ProblemFamilyMember.objects.filter(family_id=family_id).values_list("problem_id", flat=True) if p not in rejected]
+    _set_status(problem_ids, "rejected")
+    messages.success(request, _("Package rejected."))
+    url = reverse("problembase_suggestions")
+    others = [fid for fid in request.POST.getlist("cluster") if fid.isdigit() and int(fid) != family_id]
+    return redirect(f"{url}#f{others[0]}" if others else url)
 
 
 navbar_links_registry.register(

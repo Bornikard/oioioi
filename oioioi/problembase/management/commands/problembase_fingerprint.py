@@ -1,6 +1,8 @@
 from django.core.management.base import BaseCommand
 
 from oioioi.problembase.fingerprint import compute_fingerprint
+from oioioi.problembase.models import ensure_families
+from oioioi.problembase.rejection import auto_reject
 from oioioi.problems.models import Problem
 
 
@@ -27,3 +29,5 @@ class Command(BaseCommand):
             if i % 50 == 0 or i == total:
                 self.stdout.write(f"{i}/{total}")
         self.stdout.write(f"done, {failed} with errors")
+        ensure_families()
+        self.stdout.write(f"{auto_reject()} unused duplicate packages rejected")

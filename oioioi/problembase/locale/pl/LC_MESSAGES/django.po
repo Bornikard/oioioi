@@ -166,6 +166,42 @@ msgstr "Nieznane loginy:"
 msgid "Different"
 msgstr "Różne"
 
+msgid "normal"
+msgstr "zwykła"
+
+msgid "rejected"
+msgstr "odrzucona"
+
+msgid "rejected automatically"
+msgstr "odrzucona automatycznie"
+
+msgid "kept"
+msgstr "zachowana"
+
+msgid "Package rejected."
+msgstr "Paczka odrzucona."
+
+msgid "Package restored."
+msgstr "Paczka przywrócona."
+
+msgid "reject"
+msgstr "odrzuć"
+
+msgid "restore"
+msgstr "przywróć"
+
+msgid "Unfinished, broken or unused package: leave it out of the catalog."
+msgstr "Niedokończona, zepsuta albo nieużywana paczka: pomiń ją w katalogu."
+
+msgid ""
+"A package is rejected automatically when it is not in any contest, has no "
+"submissions other than model solutions, is not public, and a used copy of it"
+" exists."
+msgstr ""
+"Paczka jest odrzucana automatycznie, gdy nie jest w żadnym konkursie, nie ma"
+" zgłoszeń poza wzorcówkami, nie jest publiczna i istnieje używana kopia tego"
+" zadania."
+
 msgid "Select at least two problems."
 msgstr "Zaznacz co najmniej dwa zadania."
 
@@ -211,6 +247,20 @@ msgstr "odłącz"
 #, python-format
 msgid "%(seen)s seen"
 msgstr "widziane: %(seen)s"
+
+#, python-format
+msgid "Show %(counter)s rejected problem"
+msgid_plural "Show %(counter)s rejected problems"
+msgstr[0] "Pokaż %(counter)s odrzucone zadanie"
+msgstr[1] "Pokaż %(counter)s odrzucone zadania"
+msgstr[2] "Pokaż %(counter)s odrzuconych zadań"
+
+#, python-format
+msgid "%(counter)s rejected package is left out."
+msgid_plural "%(counter)s rejected packages are left out."
+msgstr[0] "Pominięto %(counter)s odrzuconą paczkę."
+msgstr[1] "Pominięto %(counter)s odrzucone paczki."
+msgstr[2] "Pominięto %(counter)s odrzuconych paczek."
 
 #, python-format
 msgid "Ban: %(counter)s person"

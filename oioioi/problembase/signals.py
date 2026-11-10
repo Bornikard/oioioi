@@ -12,11 +12,13 @@ logger = logging.getLogger(__name__)
 def _fingerprint(problem_id):
     from oioioi.problembase.fingerprint import compute_fingerprint
     from oioioi.problembase.models import ensure_families
+    from oioioi.problembase.rejection import auto_reject
     from oioioi.problems.models import Problem
 
     try:
         ensure_families()
         compute_fingerprint(Problem.objects.get(id=problem_id))
+        auto_reject()
     except Exception:
         logger.exception("Could not fingerprint problem %s", problem_id)
 

@@ -51,15 +51,17 @@
             <th>{% trans "Problem" %}</th>
             <th>{% trans "Upload date" %}</th>
             <th>{% trans "Contests" %}</th>
-            {% if packages|length > 1 %}<th>{% trans "Model solution" %}</th><th></th>{% endif %}
+            <th>{% trans "Model solution" %}</th>
+            <th></th>
         </tr>
     </thead>
     <tbody>
     {% for package in packages %}
-        <tr>
+        <tr{% if package.rejected %} class="pb-rejected"{% endif %}>
             <td>
                 {% if package.url %}<a href="{{ package.url }}">{{ package.problem.name }}</a>{% else %}{{ package.problem.name }}{% endif %}
                 <span class="pb-muted">{{ package.problem.short_name }} · #{{ package.problem.id }}</span>
+                {% if package.rejected %}<span class="pb-muted">· {% if package.auto %}{% trans "rejected automatically" %}{% else %}{% trans "rejected" %}{% endif %}</span>{% endif %}
             </td>
             <td class="pb-muted text-nowrap">{{ package.uploaded|date:"Y-m-d"|default:"–" }}</td>
             <td>
@@ -69,18 +71,23 @@
                     <span class="pb-muted">–</span>
                 {% endfor %}
             </td>
-            {% if packages|length > 1 %}
-                <td class="pb-muted text-nowrap">
-                    {% if package.solution == "same" %}{% trans "identical" %}{% elif package.solution == "different" %}<span class="text-warning-emphasis">{% trans "different" %}</span>{% else %}–{% endif %}
-                </td>
-                <td class="text-end">
-                    <form method="post" action="{% url 'problembase_unlink' problem_id=package.problem.id %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="ban_query" value="{{ ban_query }}">
-                        <button type="submit" class="btn btn-link btn-sm p-0">{% trans "unlink" %}</button>
-                    </form>
-                </td>
-            {% endif %}
+            <td class="pb-muted text-nowrap">
+                {% if package.solution == "same" %}{% trans "identical" %}{% elif package.solution == "different" %}<span class="text-warning-emphasis">{% trans "different" %}</span>{% else %}–{% endif %}
+            </td>
+            <td class="text-end text-nowrap">
+                <form method="post" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="ban_query" value="{{ ban_query }}">
+                    {% if package.rejected %}
+                        <button type="submit" formaction="{% url 'problembase_restore' problem_id=package.problem.id %}" class="btn btn-link btn-sm p-0">{% trans "restore" %}</button>
+                    {% else %}
+                        <button type="submit" formaction="{% url 'problembase_reject' problem_id=package.problem.id %}" class="btn btn-link btn-sm p-0">{% trans "reject" %}</button>
+                    {% endif %}
+                    {% if packages|length > 1 %}
+                        <button type="submit" formaction="{% url 'problembase_unlink' problem_id=package.problem.id %}" class="btn btn-link btn-sm p-0 ms-2">{% trans "unlink" %}</button>
+                    {% endif %}
+                </form>
+            </td>
         </tr>
     {% endfor %}
     </tbody>

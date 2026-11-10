@@ -316,3 +316,77 @@ class TestNavbarAndLinks(ProblemBaseTestCase):
         self.assertTrue(self.client.login(username="test_admin"))
         response = self.client.get(reverse("problembase_family", kwargs={"family_id": family_of(problem).id}))
         self.assertContains(response, reverse("problem_site", kwargs={"site_key": "abcdef"}))
+
+
+class TestRejection(ProblemBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        from oioioi.problembase.rejection import auto_reject, rejected_problem_ids
+
+        self.auto_reject, self.rejected = auto_reject, rejected_problem_ids
+        self.contest = Contest.objects.create(id="c1", name="Camp", controller_name="oioioi.participants.tests.ParticipantsContestController")
+        self.used = self._problem("aaa", "Pierwsze")
+        ProblemInstance.objects.create(problem=self.used, contest=self.contest, short_name="aaa")
+        self.copy = self._problem("aaa", "Pierwsze")
+        self.unique = self._problem("zzz", "Jedyne")
+        ensure_families()
+
+    def test_unused_copy_is_rejected(self):
+        self.assertEqual(self.auto_reject(), 1)
+        self.assertEqual(self.rejected(), {self.copy.id})
+        self.assertEqual(find_clusters(), [])
+
+    def test_copy_in_the_same_family_is_rejected(self):
+        other = self._problem("bbb", "Inna nazwa")
+        ensure_families()
+        merge_families([family_of(self.used).id, family_of(other).id])
+        self.auto_reject()
+        self.assertIn(other.id, self.rejected())
+
+    def test_reasons_to_keep(self):
+        submitted, public = self._problem("aaa", "Pierwsze"), self._problem("aaa", "Pierwsze")
+        main = ProblemInstance.objects.create(problem=submitted, short_name="aaa")
+        Submission.objects.create(user=User.objects.get(username="test_user"), problem_instance=main)
+        public.visibility = Problem.VISIBILITY_PUBLIC
+        public.save()
+        ensure_families()
+        self.auto_reject()
+        self.assertEqual(self.rejected(), {self.copy.id})
+
+    def test_model_solution_submissions_do_not_keep(self):
+        main = ProblemInstance.objects.create(problem=self.copy, short_name="aaa")
+        Submission.objects.create(user=None, problem_instance=main)
+        self.auto_reject()
+        self.assertEqual(self.rejected(), {self.copy.id})
+
+    def test_restored_is_never_rejected_again(self):
+        self.auto_reject()
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.client.post(reverse("problembase_restore", kwargs={"contest_id": "c1", "problem_id": self.copy.id}))
+        self.auto_reject()
+        self.assertEqual(self.rejected(), set())
+
+    def test_rejection_ends_when_used(self):
+        self.auto_reject()
+        ProblemInstance.objects.create(problem=self.copy, contest=self.contest, short_name="aab")
+        self.assertEqual(self.rejected(), set())
+
+    def test_manual_reject_and_list(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.client.post(reverse("problembase_reject", kwargs={"contest_id": "c1", "problem_id": self.unique.id}))
+        self.assertEqual(self.rejected(), {self.unique.id})
+        response = self.client.get(reverse("problembase_list"), follow=True)
+        self.assertNotContains(response, "Jedyne")
+        self.assertContains(response, "Show 1 rejected problem")
+        response = self.client.get(reverse("problembase_list"), {"show_rejected": "1"}, follow=True)
+        self.assertContains(response, "Jedyne")
+
+    def test_reject_from_suggestions(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        response = self.client.get(reverse("problembase_suggestions"), follow=True)
+        self.assertContains(response, "1 rejected package is left out.")
+        third = self._problem("zzz", "Jedyne")
+        ensure_families()
+        self.client.post(reverse("problembase_reject_family", kwargs={"contest_id": "c1", "family_id": family_of(third).id}))
+        self.assertIn(third.id, self.rejected())
+        self.assertNotIn(self.unique.id, self.rejected())

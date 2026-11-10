@@ -20,8 +20,19 @@ class ProblemFamily(models.Model):
 
 
 class ProblemFamilyMember(models.Model):
+    STATUS_CHOICES = [
+        ("", _("normal")),
+        ("rejected", _("rejected")),
+        ("auto", _("rejected automatically")),
+        ("kept", _("kept")),
+    ]
+
     problem = models.OneToOneField(Problem, primary_key=True, related_name="family_member", on_delete=models.CASCADE)
     family = models.ForeignKey(ProblemFamily, related_name="members", on_delete=models.CASCADE)
+    # Rejected packages (unfinished, broken, unused duplicates) are left out of the
+    # catalog and of merge suggestions; they still count for "seen".
+    # "kept" means an admin restored the package, so it is never rejected automatically.
+    status = models.CharField(max_length=8, blank=True, default="", choices=STATUS_CHOICES)
 
 
 class ProblemDescription(models.Model):

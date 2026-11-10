@@ -20,6 +20,9 @@
     {% endif %}
 </div>
 
+{% if rejected_count %}
+<p class="pb-muted" title="{% trans 'A package is rejected automatically when it is not in any contest, has no submissions other than model solutions, is not public, and a used copy of it exists.' %}">{% blocktrans count counter=rejected_count %}{{ counter }} rejected package is left out.{% plural %}{{ counter }} rejected packages are left out.{% endblocktrans %}</p>
+{% endif %}
 {% if fingerprinted < problem_count %}
 <p class="text-warning-emphasis">{% blocktrans %}Model solutions and statements are read for {{ fingerprinted }} of {{ problem_count }} problems, so suggestions for the rest rely on names only. Run <code>manage.py problembase_fingerprint</code> on the server.{% endblocktrans %}</p>
 {% endif %}
@@ -32,6 +35,7 @@
         {% for row in item.families %}
             <tr id="f{{ row.family.id }}">
                 <td style="width: 2rem">
+                    <input type="hidden" name="cluster" value="{{ row.family.id }}">
                     <input type="checkbox" class="form-check-input" name="family" value="{{ row.family.id }}"{% if item.families|length == 2 %} checked{% endif %} aria-label="{% trans 'Select' %}">
                 </td>
                 <td class="pb-muted" style="width: 1.5rem">{{ forloop.counter }}</td>
@@ -39,6 +43,7 @@
                     <a href="{% url 'problembase_family' family_id=row.family.id %}">{{ row.name }}</a>
                     <span class="pb-muted">{{ row.short_names|join:", " }}{% if row.problems|length > 1 %} · {% blocktrans count counter=row.problems|length %}{{ counter }} package{% plural %}{{ counter }} packages{% endblocktrans %}{% endif %}</span>
                 </td>
+                <td class="text-end"><button type="submit" formaction="{% url 'problembase_reject_family' family_id=row.family.id %}" class="btn btn-link btn-sm p-0" title="{% trans 'Unfinished, broken or unused package: leave it out of the catalog.' %}">{% trans "reject" %}</button></td>
                 <td class="pb-muted">{% if row.solution_names %}{{ row.solution_names|join:", " }}{% else %}{% trans "no model solution" %}{% endif %}</td>
                 <td class="pb-muted">{% for use in row.contests %}{{ use.contest.name }} {{ use.date|date:"Y" }}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>
             </tr>

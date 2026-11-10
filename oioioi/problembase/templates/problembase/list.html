@@ -53,11 +53,11 @@
     </thead>
     <tbody>
     {% for row in rows %}
-        <tr>
+        <tr{% if row.all_rejected %} class="pb-rejected"{% endif %}>
             <td><input type="checkbox" class="form-check-input" name="family" value="{{ row.family.id }}" form="pb-merge-form" aria-label="{% trans 'Select' %}"></td>
             <td>
                 <a href="{% url 'problembase_family' family_id=row.family.id %}{% if ban_query %}?{{ ban_query }}{% endif %}">{{ row.name }}</a>
-                <span class="pb-muted">{{ row.short_names|join:", " }}{% if row.problems|length > 1 %} · {% blocktrans count counter=row.problems|length %}{{ counter }} package{% plural %}{{ counter }} packages{% endblocktrans %}{% endif %}</span>
+                <span class="pb-muted">{{ row.short_names|join:", " }}{% if row.problems|length > 1 %} · {% blocktrans count counter=row.problems|length %}{{ counter }} package{% plural %}{{ counter }} packages{% endblocktrans %}{% endif %}{% if row.all_rejected %} · {% trans "rejected" %}{% endif %}</span>
                 {% if row.description %}
                     <div class="pb-summary">{{ row.description.statement }}</div>
                     {% if row.description.rating_reason %}<div class="pb-muted">{{ row.description.rating_reason }}</div>{% endif %}
@@ -78,6 +78,16 @@
     </tbody>
 </table>
 </div>
+
+{% if rejected_count %}
+<form method="get" class="mb-2">
+    {% for key, value in request.GET.lists %}{% if key != "show_rejected" and key != "page" %}{% for v in value %}<input type="hidden" name="{{ key }}" value="{{ v }}">{% endfor %}{% endif %}{% endfor %}
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="show_rejected" value="1" id="pb-show-rejected"{% if show_rejected %} checked{% endif %} onchange="this.form.submit()">
+        <label class="form-check-label pb-muted" for="pb-show-rejected">{% blocktrans count counter=rejected_count %}Show {{ counter }} rejected problem{% plural %}Show {{ counter }} rejected problems{% endblocktrans %}</label>
+    </div>
+</form>
+{% endif %}
 
 {% if page.has_other_pages %}
 <nav class="d-flex gap-3 align-items-baseline">
