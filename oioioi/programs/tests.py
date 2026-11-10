@@ -41,7 +41,7 @@ from oioioi.problems.models import Problem
 from oioioi.programs import utils
 from oioioi.programs.controllers import ProgrammingContestController
 from oioioi.programs.forms import ContestLanguagesConfigForm
-from oioioi.programs.handlers import collect_tests, grade_tests
+from oioioi.programs.handlers import collect_tests, grade_tests, make_report
 from oioioi.programs.models import (
     CheckerFormatForContest,
     CheckerFormatForProblem,
@@ -2554,3 +2554,43 @@ class TestApplySubtaskDependencies(TestCase):
             IntegerScore(20),
         )
         self.assertFalse(result["groups_affected_by_dependency"]["2"]["affected"])
+
+
+class TestMakeReport(TestCase):
+    fixtures = [
+        "test_users",
+        "test_contest",
+        "test_full_package",
+        "test_problem_instance",
+        "test_submission",
+    ]
+
+    def test_nul_in_checker_comment(self):
+        # The default checker escapes unprintable output with a raw NUL byte,
+        # which PostgreSQL cannot store.
+        env = create_environ()
+        env.update(
+            submission_id=1,
+            status="WA",
+            score=None,
+            max_score=None,
+            compilation_result="OK",
+            compilation_message="",
+            tests={"0": {"id": 1, "group": "0"}},
+            test_results={
+                "0": {
+                    "exec_time_limit": 1000,
+                    "exec_mem_limit": 131072,
+                    "max_score": None,
+                    "score": None,
+                    "status": "WA",
+                    "time_used": 0,
+                    "mem_used": 2088,
+                    "result_percentage": (0, 1),
+                    "result_string": 'ŹLE: oczekiwano "abc", otrzymano "<0x\x005><0x\x006>"',
+                }
+            },
+        )
+        env = make_report(env)
+        report = TestReport.objects.get(id=env["test_results"]["0"]["report_id"])
+        self.assertEqual('ŹLE: oczekiwano "abc", otrzymano "<0x5><0x6>"', report.comment)

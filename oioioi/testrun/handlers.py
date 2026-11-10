@@ -95,7 +95,8 @@ def make_report(env, **kwargs):
     test = env["tests"]["test"]
     test_result = env["test_results"]["test"]
 
-    comment = test_result.get("result_string", "")
+    # PostgreSQL rejects NUL in text columns; checkers may emit it (e.g. when escaping bad output).
+    comment = test_result.get("result_string", "").replace("\x00", "")
     if comment.lower() == "ok":  # Annoying
         comment = ""
 
