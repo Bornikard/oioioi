@@ -30,6 +30,9 @@
 {% elif description %}
     <section class="mb-4">
         <div class="pb-text mb-2">{{ description.statement }}</div>
+        {% if description.main_tag_names or description.object_names %}
+            <div class="pb-tags mb-2">{{ description.main_tag_names|join:" · " }}{% if description.side_tag_names %}<span class="pb-muted"> · {{ description.side_tag_names|join:" · " }}</span>{% endif %}{% if description.object_names %}<span class="pb-muted"> — {{ description.object_names|join:", " }}</span>{% endif %}</div>
+        {% endif %}
         {% if description.rating_reason %}<div class="pb-muted mb-2">{{ description.rating_reason }}</div>{% endif %}
         {% if description.solution %}
             <details>
@@ -37,7 +40,7 @@
                 <div class="pb-text mt-1">{{ description.solution }}</div>
             </details>
         {% endif %}
-        <div class="pb-muted mt-2">{{ description.get_source_display }} · <a href="?{% if ban_query %}{{ ban_query }}&amp;{% endif %}edit=1">{% trans "edit" %}</a></div>
+        <div class="pb-muted mt-2">{{ description.get_source_display }}{% if description.model_name %} ({{ description.model_name }}){% endif %} · <a href="?{% if ban_query %}{{ ban_query }}&amp;{% endif %}edit=1">{% trans "edit" %}</a></div>
     </section>
 {% else %}
     <p class="pb-muted"><a href="?{% if ban_query %}{{ ban_query }}&amp;{% endif %}edit=1">{% trans "Add description" %}</a></p>

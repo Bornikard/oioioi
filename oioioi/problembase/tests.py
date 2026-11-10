@@ -405,3 +405,191 @@ class TestContestOrder(ProblemBaseTestCase):
 
         (row,) = _family_rows([family_of(problem).id])
         self.assertEqual([use.contest.name for use in row.contests], ["Najnowszy", "Sredni", "Najstarszy", "Czwarty"])
+
+
+class TestExport(TestCase):
+    fixtures = ["test_users"]
+
+    def test_export_uploaded_package(self):
+        import json
+        import tempfile
+        import zipfile
+
+        from oioioi.sinolpack.tests import get_test_filename
+
+        call_command("addproblem", get_test_filename("test_simple_package.zip"))
+        problem = Problem.objects.get()
+        contest = Contest.objects.create(id="c1", name="Camp 2024", controller_name="oioioi.participants.tests.ParticipantsContestController")
+        rnd = Round.objects.create(contest=contest, name="Dzień 1", start_date=timezone.now() - timedelta(days=3))
+        ProblemInstance.objects.create(problem=problem, contest=contest, round=rnd, short_name="tst")
+        Participant.objects.create(contest=contest, user=User.objects.get(username="test_user"))
+        with tempfile.NamedTemporaryFile(suffix=".zip") as out:
+            call_command("problembase_export", out.name)
+            with zipfile.ZipFile(out.name) as archive:
+                (record,) = [json.loads(line) for line in archive.read("families.jsonl").decode().splitlines()]
+                meta = json.loads(archive.read("meta.json"))
+        self.assertEqual(meta["families"], 1)
+        self.assertEqual(record["problem_id"], problem.id)
+        self.assertIn("\\documentclass", record["statement_tex"])
+        self.assertEqual([s["name"] for s in record["solutions"]], ["tst.cpp"])
+        self.assertIn("main", record["solutions"][0]["source"])
+        self.assertEqual(record["contests"][0]["contest"], "Camp 2024")
+        self.assertEqual(record["contests"][0]["participants"], 1)
+        self.assertGreater(record["limits"]["tests"], 0)
+        self.assertEqual(record["errors"], [])
+
+    def test_solution_order(self):
+        from oioioi.problembase.export import _solution_key
+
+        class S:
+            def __init__(self, name):
+                self.name = name
+
+        names = ["abc2.cpp", "abcs1.cpp", "abc.py", "abc.cpp", "abc1.cpp", "abc10.cpp"]
+        ordered = [s.name for s in sorted(map(S, names), key=lambda s: _solution_key(s, "abc"))]
+        self.assertEqual(ordered[:4], ["abc.cpp", "abc1.cpp", "abc2.cpp", "abc10.cpp"])
+
+
+class TestTaxonomy(TestCase):
+    def test_consistent(self):
+        from oioioi.problembase import taxonomy
+
+        self.assertEqual(len(taxonomy.TAG_SLUGS), len(set(taxonomy.TAG_SLUGS)))
+        for slug, parent in taxonomy.TAG_PARENT.items():
+            self.assertIn(parent, taxonomy.TAG_NAMES, slug)
+        self.assertEqual(set(taxonomy.TAG_CATEGORY.values()) - set(taxonomy.CATEGORY_NAMES), set())
+        self.assertEqual(taxonomy.expand(["rerooting"]), {"rerooting", "dp-trees", "dp"})
+
+
+def load_describe_tool():
+    import importlib.util
+    from pathlib import Path
+
+    import oioioi.problembase
+
+    path = Path(oioioi.problembase.__file__).parent / "tools" / "describe.py"
+    spec = importlib.util.spec_from_file_location("describe_tool", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def export_record(family_id, contests=(), **extra):
+    record = {
+        "family_id": family_id,
+        "problem_id": family_id,
+        "problem_ids": [family_id],
+        "name": f"Zadanie {family_id}",
+        "short_name": f"z{family_id}",
+        "statement_tex": "\\documentclass{sinol}\\begin{document}Policz $n$ % komentarz\n\\end{document}",
+        "statement_text": "",
+        "editorial": "",
+        "config_yml": "scores: {1: 50, 2: 50}",
+        "solutions": [{"name": f"z{family_id}.cpp", "source": "int main() {}"}],
+        "limits": {"time_ms": 1000, "memory_kb": 262144, "tests": 10},
+        "contests": list(contests),
+        "errors": [],
+    }
+    record.update(extra)
+    return record
+
+
+def use(contest, submitted=0, full=None):
+    return {
+        "contest": contest,
+        "contest_id": "x",
+        "round": "Dzień 1",
+        "date": "2024-07-01",
+        "participants": 20,
+        "submitted": submitted,
+        "full_score": full,
+        "average_percent": None,
+    }
+
+
+class TestDescribeTool(TestCase):
+    def setUp(self):
+        self.tool = load_describe_tool()
+
+    def test_normalize(self):
+        data = self.tool.normalize(
+            {
+                "statement": "Ciąg \tilde",
+                "solution": "DP",
+                "main_tags": ["dp", "dp-trees", "nonexistent"],
+                "side_tags": ["sorting", "dp"],
+                "objects": ["tree", "tree", "bogus"],
+                "rating": 1840,
+                "rating_reason": "Stan DP.",
+            }
+        )
+        self.assertEqual(data["main_tags"], ["dp-trees"])
+        self.assertEqual(data["side_tags"], ["sorting"])
+        self.assertEqual(data["objects"], ["tree"])
+        self.assertEqual(data["rating"], 1800)
+        self.assertEqual(data["statement"], "Ciąg \\tilde")
+
+    def test_normalize_rejects_answers_without_tags(self):
+        answer = {"statement": "a", "solution": "b", "main_tags": ["bogus"], "side_tags": [], "objects": [], "rating": 1000, "rating_reason": "c"}
+        with self.assertRaises(ValueError):
+            self.tool.normalize(answer)
+
+    def test_strata_and_sample(self):
+        records = [
+            export_record(1, [use("Gródek Ekstraklasa")]),
+            export_record(2, [use("Camp", submitted=20, full=2)]),
+            export_record(3, [use("Grupa zaawansowana")]),
+            export_record(4, [use("Grupa podstawowa", submitted=20, full=18)]),
+            export_record(5),
+        ]
+        self.assertEqual([self.tool.stratum(r) for r in records], ["hard", "hard", "medium", "easy", "unknown"])
+        chosen = self.tool.sample(records, 4, seed=1)
+        self.assertEqual({self.tool.stratum(r) for r in chosen}, {"easy", "medium", "hard", "unknown"})
+        self.assertEqual([r["family_id"] for r in chosen], [r["family_id"] for r in self.tool.sample(records, 4, seed=1)])
+
+    def test_prompt(self):
+        prompt = self.tool.build_prompt(export_record(7, [use("Gródek Mistrzowska", submitted=10, full=3)]))
+        self.assertIn("Policz $n$", prompt)
+        self.assertNotIn("documentclass", prompt)
+        self.assertNotIn("komentarz", prompt)
+        self.assertIn("z7.cpp", prompt)
+        self.assertIn("na 100% 3", prompt)
+        self.assertIn("rerooting: DP po wszystkich korzeniach", prompt)
+
+
+class TestImport(ProblemBaseTestCase):
+    def _write(self, records):
+        import json
+        import tempfile
+
+        f = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False, encoding="utf-8")
+        for record in records:
+            f.write(json.dumps(record) + "\n")
+        f.close()
+        return f.name
+
+    def _result(self, problem, rating=1500):
+        analysis = {
+            "statement": "Policz $n$.",
+            "solution": "Wzór.",
+            "main_tags": ["combinatorics"],
+            "side_tags": ["modular-arithmetic"],
+            "objects": ["numbers"],
+            "rating": rating,
+            "rating_reason": "Prosty wzór.",
+        }
+        return {"family_id": 0, "problem_id": problem.id, "short_name": problem.short_name, "model": "gemini-x", "analysis": analysis}
+
+    def test_import(self):
+        a, b = self._problem("aaa"), self._problem("bbb")
+        ensure_families()
+        ProblemDescription.objects.create(family=family_of(b), statement="Ręczny opis.")
+        path = self._write([self._result(a, 1400), self._result(a, 1600), self._result(b)])
+        call_command("problembase_import", path)
+        description = ProblemDescription.objects.get(family=family_of(a))
+        self.assertEqual((description.rating, description.source, description.model_name), (1600, "llm", "gemini-x"))
+        self.assertEqual(description.main_tag_names, ["kombinatoryka"])
+        self.assertEqual(description.object_names, ["liczby"])
+        self.assertEqual(ProblemDescription.objects.get(family=family_of(b)).statement, "Ręczny opis.")
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.assertContains(self.client.get(reverse("problembase_list")), "kombinatoryka")

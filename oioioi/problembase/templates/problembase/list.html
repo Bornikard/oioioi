@@ -28,7 +28,7 @@
 
 {% with keep=keep_for_ban %}{% include "problembase/_ban.html" %}{% endwith %}
 
-<form method="post" action="{% url 'problembase_merge' %}" id="pb-merge-form">
+<form method="post" action="{% url 'problembase_merge' %}" id="pb-merge-form" data-confirm="{% trans 'Merge these problems into one?' %}">
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ request.get_full_path }}">
 </form>
@@ -54,12 +54,13 @@
     <tbody>
     {% for row in rows %}
         <tr{% if row.all_rejected %} class="pb-rejected"{% endif %}>
-            <td><input type="checkbox" class="form-check-input" name="family" value="{{ row.family.id }}" form="pb-merge-form" aria-label="{% trans 'Select' %}"></td>
+            <td><input type="checkbox" class="form-check-input" name="family" value="{{ row.family.id }}" form="pb-merge-form" data-name="{{ row.name }}" aria-label="{% trans 'Select' %}"></td>
             <td>
                 <a href="{% url 'problembase_family' family_id=row.family.id %}{% if ban_query %}?{{ ban_query }}{% endif %}">{{ row.name }}</a>
                 <span class="pb-muted">{{ row.short_names|join:", " }}{% if row.problems|length > 1 %} · {% blocktrans count counter=row.problems|length %}{{ counter }} package{% plural %}{{ counter }} packages{% endblocktrans %}{% endif %}{% if row.all_rejected %} · {% trans "rejected" %}{% endif %}</span>
                 {% if row.description %}
                     <div class="pb-summary">{{ row.description.statement }}</div>
+                    {% if row.description.main_tag_names %}<div class="pb-tags">{{ row.description.main_tag_names|join:" · " }}</div>{% endif %}
                     {% if row.description.rating_reason %}<div class="pb-muted">{{ row.description.rating_reason }}</div>{% endif %}
                 {% endif %}
             </td>
@@ -96,4 +97,12 @@
     {% if page.has_next %}<a href="?{{ page_query }}&amp;page={{ page.next_page_number }}">{% trans "next" %} &rarr;</a>{% endif %}
 </nav>
 {% endif %}
+<script>
+    document.getElementById("pb-merge-form").addEventListener("submit", function (event) {
+        const names = Array.from(document.querySelectorAll('input[form="pb-merge-form"][name="family"]:checked'), (box) => "• " + box.dataset.name);
+        if (names.length >= 2 && !window.confirm(this.dataset.confirm + "\n\n" + names.join("\n"))) {
+            event.preventDefault();
+        }
+    });
+</script>
 {% endblock %}

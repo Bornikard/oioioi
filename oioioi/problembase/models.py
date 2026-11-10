@@ -1,6 +1,7 @@
 from django.db import models, transaction
 from django.utils.translation import gettext_lazy as _
 
+from oioioi.problembase.taxonomy import OBJECT_NAMES, TAG_NAMES
 from oioioi.problems.models import Problem
 
 
@@ -51,6 +52,11 @@ class ProblemDescription(models.Model):
     rating = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name=_("rating"), help_text=_("Codeforces scale, 800-3500."))
     rating_reason = models.CharField(max_length=500, blank=True, verbose_name=_("rating reason"))
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default="manual", verbose_name=_("origin"))
+    # slugs from oioioi.problembase.taxonomy
+    main_tags = models.JSONField(default=list, blank=True)
+    side_tags = models.JSONField(default=list, blank=True)
+    problem_objects = models.JSONField(default=list, blank=True)  # "objects" would hide the manager
+    model_name = models.CharField(max_length=100, blank=True)
     modified = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -59,6 +65,18 @@ class ProblemDescription(models.Model):
 
     def __str__(self):
         return str(self.family)
+
+    @property
+    def main_tag_names(self):
+        return [TAG_NAMES[t] for t in self.main_tags if t in TAG_NAMES]
+
+    @property
+    def side_tag_names(self):
+        return [TAG_NAMES[t] for t in self.side_tags if t in TAG_NAMES]
+
+    @property
+    def object_names(self):
+        return [OBJECT_NAMES[o] for o in self.problem_objects if o in OBJECT_NAMES]
 
 
 class ProblemFingerprint(models.Model):

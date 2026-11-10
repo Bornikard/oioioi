@@ -166,6 +166,9 @@ msgstr "Nieznane loginy:"
 msgid "Different"
 msgstr "Różne"
 
+msgid "Merge these problems into one?"
+msgstr "Na pewno połączyć te zadania w jedno?"
+
 msgid "normal"
 msgstr "zwykła"
 
