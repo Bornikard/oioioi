@@ -17,8 +17,9 @@ class Command(BaseCommand):
                 contest = Contest.objects.get(id=contest_id)
             except Contest.DoesNotExist as error:
                 raise CommandError(f"No contest {contest_id}") from error
-            if options["force"] or needs_update(contest):
-                items = assess_contest(contest)
+            # The same claim as on the panel: concurrent runs are serialised.
+            items = assess_contest(contest, force=options["force"]) if options["force"] or needs_update(contest) else None
+            if items is not None:
                 self.stdout.write(f"{contest_id}: {len(items)} submissions assessed")
             else:
                 self.stdout.write(f"{contest_id}: up to date")

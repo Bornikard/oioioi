@@ -58,6 +58,8 @@ def _latest_decisions(contest):
     return latest
 
 
+# Assessing runs outside the request's transaction: see ContestAssessor.
+@transaction.non_atomic_requests
 @contest_admin_menu_registry.register_decorator(
     _("LLM detection"),
     lambda request: _panel_url(request.contest),
@@ -116,6 +118,8 @@ def _summary(contest):
     }
 
 
+# Assessing runs outside the request's transaction: see ContestAssessor.
+@transaction.non_atomic_requests
 @require_POST
 @enforce_condition(contest_exists & is_contest_admin)
 def recompute_view(request):
@@ -307,6 +311,8 @@ def _typical_submission(assessments, selected):
     return min(others, key=lambda a: (not a.context.get("trusted", False), a.context.get("profile", {}).get("distance", 0)))
 
 
+# Assessing runs outside the request's transaction: see ContestAssessor.
+@transaction.non_atomic_requests
 @enforce_condition(contest_exists & is_contest_admin)
 def user_view(request, user_id):
     contest = request.contest
