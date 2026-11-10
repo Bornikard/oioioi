@@ -1,7 +1,7 @@
 {% extends "base-with-menu.html" %}
 {% load i18n %}
 
-{% block title %}{{ row.name }} · {% trans "Problem base" %}{% endblock %}
+{% block title %}{{ row.name }} · {% trans "Problem catalog" %}{% endblock %}
 
 {% block styles %}
 {{ block.super }}
@@ -9,7 +9,7 @@
 {% endblock %}
 
 {% block main-content %}
-<p class="pb-muted mb-1"><a href="{% url 'problembase_list' %}{% if ban_query %}?{{ ban_query }}{% endif %}">&larr; {% trans "Problem base" %}</a></p>
+<p class="pb-muted mb-1"><a href="{% url 'problembase_list' %}{% if ban_query %}?{{ ban_query }}{% endif %}">&larr; {% trans "Problem catalog" %}</a></p>
 <div class="d-flex align-items-baseline gap-3 flex-wrap">
     <h1>{{ row.name }}</h1>
     <span class="pb-muted">{{ row.short_names|join:", " }}</span>
@@ -58,13 +58,13 @@
     {% for package in packages %}
         <tr>
             <td>
-                <a href="{% url 'oioioiadmin:problems_problem_change' package.problem.id %}">{{ package.problem.name }}</a>
+                {% if package.url %}<a href="{{ package.url }}">{{ package.problem.name }}</a>{% else %}{{ package.problem.name }}{% endif %}
                 <span class="pb-muted">{{ package.problem.short_name }} · #{{ package.problem.id }}</span>
             </td>
             <td class="pb-muted text-nowrap">{{ package.uploaded|date:"Y-m-d"|default:"–" }}</td>
             <td>
                 {% for pi in package.instances %}
-                    <div>{{ pi.contest.name }}{% if pi.round %} <span class="pb-muted">· {{ pi.round.name }} · {{ pi.round.start_date|date:"Y-m-d" }}</span>{% endif %}</div>
+                    <div><a href="{{ pi.statement_url }}">{{ pi.contest.name }}</a>{% if pi.round %} <span class="pb-muted">· {{ pi.round.name }} · {{ pi.round.start_date|date:"Y-m-d" }}</span>{% endif %}</div>
                 {% empty %}
                     <span class="pb-muted">–</span>
                 {% endfor %}

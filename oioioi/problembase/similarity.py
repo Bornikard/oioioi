@@ -24,10 +24,17 @@ class Evidence:
     statement: float = 0.0  # Jaccard similarity of statement shingles
     same_name: bool = False
     tests: float | None = None  # Jaccard similarity of test names
+    solutions_known: bool = False  # both families have hashed model solutions
 
     @property
     def certain(self):
         return self.same_solution
+
+    @property
+    def solution(self):
+        if self.same_solution:
+            return "same"
+        return "different" if self.solutions_known else "unknown"
 
 
 @dataclass
@@ -155,6 +162,11 @@ def find_clusters():
             if tests[a] and tests[b]:
                 evidence = edges[fa, fb]
                 evidence.tests = max(evidence.tests or 0.0, _jaccard(tests[a], tests[b]))
+
+    fingerprints = ProblemFingerprint.objects.values_list("problem_id", "solution_hashes")
+    with_solutions = {family_of[problem_id] for problem_id, hashes in fingerprints if hashes and problem_id in family_of}
+    for (fa, fb), evidence in edges.items():
+        evidence.solutions_known = fa in with_solutions and fb in with_solutions
 
     parent = {}
 

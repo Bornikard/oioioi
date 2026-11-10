@@ -12,9 +12,8 @@ from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
-from oioioi.base.admin import system_admin_menu_registry
+from oioioi.base.menu import navbar_links_registry
 from oioioi.base.permissions import enforce_condition, is_superuser
-from oioioi.contests.menu import contest_admin_menu_registry
 from oioioi.contests.models import Contest, ProblemInstance
 from oioioi.problembase.models import (
     ProblemDescription,
@@ -67,9 +66,20 @@ class FamilyRow:
         return result
 
 
+def problem_url(problem, instances=()):
+    """The problem's page: its problemset site, or its statement in a contest."""
+    site = getattr(problem, "problemsite", None)
+    if site is not None:
+        return reverse("problem_site", kwargs={"site_key": site.url_key})
+    for pi in instances:
+        return reverse("problem_statement", kwargs={"contest_id": pi.contest_id, "problem_instance": pi.short_name})
+    return None
+
+
 def _family_rows(family_ids):
     rows = {fid: FamilyRow(family=family) for fid, family in ProblemFamily.objects.in_bulk(family_ids).items()}
-    members = ProblemFamilyMember.objects.filter(family_id__in=family_ids).select_related("problem").prefetch_related("problem__names").order_by("problem_id")
+    members = ProblemFamilyMember.objects.filter(family_id__in=family_ids).select_related("problem__problemsite").prefetch_related("problem__names")
+    members = members.order_by("problem_id")
     family_of = {}
     for member in members:
         rows[member.family_id].problems.append(member.problem)
@@ -225,10 +235,14 @@ def family_view(request, family_id):
         else:
             hashes = {entry["hash"] for entry in fp.solution_hashes}
             solution = "same" if any(hash_count[h] > 1 for h in hashes) else ("different" if hashes else None)
+        instances = sorted(uses[problem.id], key=lambda pi: pi.round.start_date if pi.round else pi.contest.creation_date)
+        for pi in instances:
+            pi.statement_url = reverse("problem_statement", kwargs={"contest_id": pi.contest_id, "problem_instance": pi.short_name})
         packages.append(
             {
                 "problem": problem,
-                "instances": sorted(uses[problem.id], key=lambda pi: pi.round.start_date if pi.round else pi.contest.creation_date),
+                "url": problem_url(problem, instances),
+                "instances": instances,
                 "uploaded": uploads.get(problem.id),
                 "solution": solution if len(row.problems) > 1 else None,
             }
@@ -304,32 +318,53 @@ def suggestions_view(request):
         index = {row.family.id: i + 1 for i, row in enumerate(families)}
         edges = [{"a": index[a], "b": index[b], "evidence": e} for (a, b), e in sorted(cluster.edges.items()) if a in index and b in index]
         items.append({"cluster": cluster, "families": families, "edges": edges})
+    for item, following in zip(items, items[1:] + [None], strict=True):
+        item["next"] = following["families"][0].family.id if following else None
     certain = sum(1 for item in items if item["cluster"].certain)
-    return TemplateResponse(request, "problembase/suggestions.html", {"items": items, "certain_count": certain})
+
+    solutions = defaultdict(set)
+    family_of = dict(ProblemFamilyMember.objects.values_list("problem_id", "family_id"))
+    fingerprinted = 0
+    for problem_id, hashes in ProblemFingerprint.objects.values_list("problem_id", "solution_hashes"):
+        fingerprinted += 1
+        solutions[family_of.get(problem_id)].update(entry["name"] for entry in hashes)
+    for item in items:
+        for row in item["families"]:
+            row.solution_names = sorted(solutions.get(row.family.id, ()))
+    context = {
+        "items": items,
+        "certain_count": certain,
+        "fingerprinted": fingerprinted,
+        "problem_count": len(family_of),
+    }
+    return TemplateResponse(request, "problembase/suggestions.html", context)
 
 
 @require_POST
 @enforce_condition(is_superuser)
 def resolve_view(request):
-    """Merge the checked families of a suggestion; the unchecked ones are marked
-    as different from them (and from each other) so they are not suggested again."""
-    cluster_ids = {int(fid) for fid in request.POST.getlist("cluster") if fid.isdigit()}
-    checked = {int(fid) for fid in request.POST.getlist("family") if fid.isdigit()} & cluster_ids
-    unchecked = cluster_ids - checked
-    problems = defaultdict(list)
-    for problem_id, family_id in ProblemFamilyMember.objects.filter(family_id__in=cluster_ids).values_list("problem_id", "family_id"):
-        problems[family_id].append(problem_id)
+    """Merge the checked families of a suggestion, or mark them as different from
+    each other; the unchecked ones are left as they are."""
+    checked = {int(fid) for fid in request.POST.getlist("family") if fid.isdigit()}
+    after = request.POST.get("after", "")
+    url = reverse("problembase_suggestions")
+    if len(checked) < 2:
+        messages.error(request, _("Select at least two problems."))
+        return redirect(f"{url}#f{min(checked)}" if checked else url)
 
-    groups = ([checked] if len(checked) > 1 else [{fid} for fid in checked]) + [{fid} for fid in unchecked]
-    for i, group in enumerate(groups):
-        for other in groups[i + 1 :]:
-            mark_not_same([p for fid in group for p in problems[fid]], [p for fid in other for p in problems[fid]])
-    if len(checked) > 1:
-        merge_families(checked)
-        messages.success(request, _("Merged into one problem."))
-    else:
+    if request.POST.get("action") == "different":
+        problems = defaultdict(list)
+        for problem_id, family_id in ProblemFamilyMember.objects.filter(family_id__in=checked).values_list("problem_id", "family_id"):
+            problems[family_id].append(problem_id)
+        ordered = sorted(checked)
+        for i, family_id in enumerate(ordered):
+            mark_not_same(problems[family_id], [p for other in ordered[i + 1 :] for p in problems[other]])
         messages.success(request, _("Marked as different problems."))
-    return redirect("problembase_suggestions")
+        return redirect(f"{url}#f{after}" if after.isdigit() else url)
+
+    target = merge_families(checked)
+    messages.success(request, _("Merged into one problem."))
+    return redirect(f"{url}#f{target.id}")
 
 
 @require_POST
@@ -344,17 +379,10 @@ def merge_certain_view(request):
     return redirect("problembase_suggestions")
 
 
-system_admin_menu_registry.register(
-    "problembase",
-    _("Problem base"),
-    lambda request: reverse("problembase_list"),
-    order=6,
-)
-
-contest_admin_menu_registry.register(
-    "problembase",
-    _("Problem base"),
-    lambda request: reverse("problembase_list"),
+navbar_links_registry.register(
+    name="problembase",
+    text=_("Problem catalog"),
+    url_generator=lambda request: reverse("problembase_list"),
     condition=is_superuser,
-    order=200,
+    order=250,
 )

@@ -231,12 +231,27 @@ class TestViews(ProblemBaseTestCase):
         self.client.post(reverse("problembase_unlink", kwargs={"problem_id": self.b.id}))
         self.assertNotEqual(family_of(self.a), family_of(self.b))
 
-    def test_resolve(self):
-        fa, fb, fc = family_of(self.a).id, family_of(self.b).id, family_of(self.c).id
-        self.client.post(reverse("problembase_resolve"), {"cluster": [fa, fb, fc], "family": [fa, fb]})
+    def test_resolve_merge_leaves_others(self):
+        d = self._problem("ddd", "Czwarte")
+        ensure_families()
+        fa, fb, fc, fd = (family_of(p).id for p in (self.a, self.b, self.c, d))
+        self.client.post(reverse("problembase_resolve"), {"family": [fa, fb], "action": "merge"})
+        self.client.post(reverse("problembase_resolve"), {"family": [fc, fd], "action": "merge"})
         self.assertEqual(family_of(self.a), family_of(self.b))
-        self.assertTrue(NotSameProblem.objects.filter(problem_a=self.a, problem_b=self.c).exists())
-        self.assertTrue(NotSameProblem.objects.filter(problem_a=self.b, problem_b=self.c).exists())
+        self.assertEqual(family_of(self.c), family_of(d))
+        self.assertNotEqual(family_of(self.a), family_of(self.c))
+        self.assertFalse(NotSameProblem.objects.exists())
+
+    def test_resolve_different(self):
+        fa, fb, fc = family_of(self.a).id, family_of(self.b).id, family_of(self.c).id
+        self.client.post(reverse("problembase_resolve"), {"family": [fa, fb], "action": "different"})
+        self.assertEqual(ProblemFamily.objects.count(), 3)
+        self.assertEqual(list(NotSameProblem.objects.values_list("problem_a", "problem_b")), [(self.a.id, self.b.id)])
+        self.assertNotIn(fc, {f for pair in NotSameProblem.objects.values_list("problem_a", "problem_b") for f in pair})
+
+    def test_resolve_needs_two(self):
+        self.client.post(reverse("problembase_resolve"), {"family": [family_of(self.a).id], "action": "merge"})
+        self.assertEqual(ProblemFamily.objects.count(), 3)
 
     def test_merge_certain(self):
         self._fingerprint(self.a, "h1")
@@ -265,3 +280,39 @@ class TestViews(ProblemBaseTestCase):
         response = self.client.get(reverse("problembase_list"), {**params, "hide_seen": "1"}, follow=True)
         self.assertNotContains(response, "Pierwsze")
         self.assertContains(response, "Drugie")
+
+
+class TestSolutionStatus(ProblemBaseTestCase):
+    def test_solution_status_of_suggestion(self):
+        a, b, c = self._problem("aaa", "Pierwsze"), self._problem("aaa", "Pierwsze"), self._problem("aaa", "Pierwsze")
+        ensure_families()
+        self._fingerprint(a, "h1")
+        self._fingerprint(b, "h2")
+        (cluster,) = find_clusters()
+        statuses = {pair: e.solution for pair, e in cluster.edges.items()}
+        fa, fb, fc = family_of(a).id, family_of(b).id, family_of(c).id
+        self.assertEqual(statuses[fa, fb], "different")
+        self.assertEqual(statuses[fa, fc], "unknown")
+        self.assertTrue(self.client.login(username="test_admin"))
+        response = self.client.get(reverse("problembase_suggestions"))
+        self.assertContains(response, "different model solution")
+        self.assertContains(response, "aaa.cpp")
+
+
+class TestNavbarAndLinks(ProblemBaseTestCase):
+    def test_navbar_link_for_superusers_only(self):
+        url = reverse("problembase_list")
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.assertContains(self.client.get(reverse("problemset_main")), f'href="{url}"')
+        self.assertTrue(self.client.login(username="test_user"))
+        self.assertNotContains(self.client.get(reverse("problemset_main")), f'href="{url}"')
+
+    def test_package_links_to_problem_page(self):
+        from oioioi.problems.models import ProblemSite
+
+        problem = self._problem("aaa", "Pierwsze")
+        ProblemSite.objects.create(problem=problem, url_key="abcdef")
+        ensure_families()
+        self.assertTrue(self.client.login(username="test_admin"))
+        response = self.client.get(reverse("problembase_family", kwargs={"family_id": family_of(problem).id}))
+        self.assertContains(response, reverse("problem_site", kwargs={"site_key": "abcdef"}))

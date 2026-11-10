@@ -1,7 +1,7 @@
 {% extends "base-with-menu.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Problem base" %}{% endblock %}
+{% block title %}{% trans "Problem catalog" %}{% endblock %}
 
 {% block styles %}
 {{ block.super }}
@@ -10,7 +10,7 @@
 
 {% block main-content %}
 <div class="d-flex align-items-baseline gap-3 flex-wrap">
-    <h1 class="me-auto">{% trans "Problem base" %}</h1>
+    <h1 class="me-auto">{% trans "Problem catalog" %}</h1>
     <a href="{% url 'problembase_suggestions' %}">{% trans "Merge suggestions" %}</a>
 </div>
 

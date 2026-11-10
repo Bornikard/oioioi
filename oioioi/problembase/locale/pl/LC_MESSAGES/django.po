@@ -24,8 +24,27 @@ msgstr "Połączono w jedno zadanie."
 msgid "Package moved to a separate problem."
 msgstr "Paczka przeniesiona do osobnego zadania."
 
-msgid "Problem base"
-msgstr "Baza zadań"
+msgid "Problem catalog"
+msgstr "Katalog zadań"
+
+msgid "different model solution"
+msgstr "inna wzorcówka"
+
+msgid "model solution not compared"
+msgstr "wzorcówka: brak danych"
+
+msgid "no model solution"
+msgstr "brak wzorcówki"
+
+#, python-format
+msgid ""
+"Model solutions and statements are read for %(fingerprinted)s of "
+"%(problem_count)s problems, so suggestions for the rest rely on names only. "
+"Run <code>manage.py problembase_fingerprint</code> on the server."
+msgstr ""
+"Wzorcówki i treści są wczytane dla %(fingerprinted)s z %(problem_count)s "
+"zadań, więc dla reszty sugestie opierają się tylko na nazwach. Uruchom "
+"<code>manage.py problembase_fingerprint</code> na serwerze."
 
 msgid "Select at least two problems to merge."
 msgstr "Zaznacz co najmniej dwa zadania do połączenia."
@@ -123,9 +142,6 @@ msgstr "Zadanie"
 msgid "Rating"
 msgstr "Rating"
 
-msgid "Same problem"
-msgstr "To samo zadanie"
-
 msgid "Save"
 msgstr "Zapisz"
 
@@ -147,10 +163,11 @@ msgstr "Rozwiązanie"
 msgid "Unknown logins:"
 msgstr "Nieznane loginy:"
 
-msgid ""
-"Unselected ones are marked as different and will not be suggested again."
-msgstr ""
-"Niezaznaczone zostaną oznaczone jako różne i nie będą znowu sugerowane."
+msgid "Different"
+msgstr "Różne"
+
+msgid "Select at least two problems."
+msgstr "Zaznacz co najmniej dwa zadania."
 
 msgid "Upload date"
 msgstr "Data wgrania"
