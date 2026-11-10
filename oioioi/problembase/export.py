@@ -78,8 +78,8 @@ def _wanted(relative):
 def read_package_files(field_file):
     """{relative path: bytes} for config.yml and statement/editorial files in doc/."""
     with tempfile.TemporaryFile() as tmp:
-        with field_file.open("rb") as source:
-            shutil.copyfileobj(source, tmp)
+        # Filetracker streams can only be read (no close()), so they are not used as a context manager.
+        shutil.copyfileobj(field_file.file, tmp)
         tmp.seek(0)
         files = {}
         if zipfile.is_zipfile(tmp):

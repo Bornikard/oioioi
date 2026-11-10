@@ -438,6 +438,37 @@ class TestExport(TestCase):
         self.assertGreater(record["limits"]["tests"], 0)
         self.assertEqual(record["errors"], [])
 
+    def test_package_from_a_stream_without_close(self):
+        """Filetracker gives a stream that can only be read (no close(), no seek())."""
+        import io
+        import zipfile
+
+        from oioioi.problembase.export import read_package_files
+
+        class Stream:
+            def __init__(self, data):
+                self.data = data
+
+            def read(self, size=-1):
+                if size is None or size < 0:
+                    size = len(self.data)
+                chunk, self.data = self.data[:size], self.data[size:]
+                return chunk
+
+        class FieldFile:
+            def __init__(self, data):
+                self.file = Stream(data)
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("abc/doc/abczad.tex", "Treść")
+            archive.writestr("abc/doc/abcopr.tex", "Opracowanie")
+            archive.writestr("abc/config.yml", "title: Abc")
+            archive.writestr("abc/in/abc1a.in", "1 2")
+            archive.writestr("abc/prog/abc.cpp", "int main() {}")
+        files = read_package_files(FieldFile(buffer.getvalue()))
+        self.assertEqual(set(files), {"doc/abczad.tex", "doc/abcopr.tex", "config.yml"})
+
     def test_solution_order(self):
         from oioioi.problembase.export import _solution_key
 
