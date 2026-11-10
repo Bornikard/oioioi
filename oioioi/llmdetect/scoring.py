@@ -26,12 +26,14 @@ from oioioi.contests.models import ContestPermission
 from oioioi.llmdetect.features import FEATURES_VERSION, analyze_source, containment, llm_style, style_vector
 from oioioi.llmdetect.habits import CATEGORICAL_HABITS, LLM_VALUES, extract_habits
 from oioioi.llmdetect.models import (
+    LLMDetectConfig,
     LLMReferenceSolution,
     ProblemViewEvent,
     ReviewDecision,
     RiskAssessment,
     SubmissionFeatures,
     get_config,
+    mark_dirty,
 )
 from oioioi.programs.models import ProgramSubmission
 
@@ -235,8 +237,9 @@ def ensure_features(submissions, errors=None):
     return stored
 
 
-def needs_update(contest):
-    config = get_config(contest)
+def needs_update(contest, config=None):
+    if config is None:
+        config = get_config(contest)
     if config.dirty or config.computed_at is None:
         return True
     # The analysis of the code changed (FEATURES_VERSION) since it was stored.
@@ -324,12 +327,57 @@ def _robust_scores(values):
 
 
 class ContestAssessor:
+    """Assesses all submissions of a contest.
+
+    Several requests (two staff members on the panel, the panel and
+    ``llmdetect_update``) may want to assess a contest at once. The
+    computation takes seconds to minutes, so it runs without a lock; only
+    claiming it and saving its results lock the contest's
+    :class:`LLMDetectConfig` row, briefly:
+
+    * claiming checks again whether the results are out of date (another
+      run may have just saved them) and clears ``dirty``, so that a change
+      made during the computation (a reference, a decision) sets it again
+      and is not lost;
+    * saving keeps the results of the run that started last: a run that
+      started earlier computed from older data and does not overwrite them.
+
+    The views that assess must not run in the request's transaction
+    (``transaction.non_atomic_requests``), or the lock and the new results
+    would be held until the end of the request.
+    """
+
     def __init__(self, contest):
         self.contest = contest
         self.config = get_config(contest)
         self.weights = weights()
 
-    def run(self):
+    def _locked_config(self):
+        return LLMDetectConfig.objects.select_for_update().get(pk=self.config.pk)
+
+    def run(self, force=True):
+        """Assesses the contest; with ``force=False`` only if the results are
+        out of date. Returns the assessed items, or ``None`` when the results
+        were up to date or a run that started later saved newer ones.
+        """
+        with transaction.atomic():
+            config = self._locked_config()
+            if not force and not needs_update(self.contest, config):
+                return None
+            self.started = timezone.now()
+            if config.dirty:
+                config.dirty = False
+                config.save(update_fields=["dirty"])
+            self.config = config
+        try:
+            items = self._compute()
+        except BaseException:
+            # The claim cleared the flag: the results are still out of date.
+            mark_dirty(self.contest)
+            raise
+        return items if self._save(items) else None
+
+    def _compute(self):
         submissions = list(contest_submissions(self.contest))
         self.last_submission_id = max((s.id for s in submissions), default=0)
         self.errors = []
@@ -341,7 +389,6 @@ class ContestAssessor:
             if submission.id in features
         ]
         if not self.items:
-            self._save([])
             return []
         self.by_user = defaultdict(list)
         self.by_pi = defaultdict(list)
@@ -377,7 +424,6 @@ class ContestAssessor:
         self._score_signals()
         for item in self.items:
             self._combine(item)
-        self._save(self.items)
         return self.items
 
     # Time when the participant could start working on a problem: the
@@ -890,32 +936,46 @@ class ContestAssessor:
         item.risk = sigmoid(logit)
         item.signals = signals
 
-    @transaction.atomic
     def _save(self, items):
-        now = timezone.now()
-        RiskAssessment.objects.filter(contest=self.contest).delete()
-        RiskAssessment.objects.bulk_create(
-            [
-                RiskAssessment(
-                    submission_id=item.submission.id,
-                    contest=self.contest,
-                    user_id=item.user_id,
-                    risk=item.risk,
-                    signals=item.signals,
-                    context=_round_floats(item.context),
-                    computed_at=now,
-                )
-                for item in items
-            ],
-            batch_size=500,
-        )
-        self.config.computed_at = now
-        self.config.dirty = False
-        self.config.last_submission_id = self.last_submission_id
-        # Shown on the panel, so that the staff know why submissions are missing.
-        self.config.read_errors = len(self.errors)
-        self.config.last_error = f"#{self.errors[0][0]}: {self.errors[0][1]}" if self.errors else ""
-        self.config.save(update_fields=["computed_at", "dirty", "last_submission_id", "read_errors", "last_error"])
+        """Stores the results, unless a run that started later already
+        stored newer ones. Returns whether they were stored.
+        """
+        with transaction.atomic():
+            config = self._locked_config()
+            if config.computed_at is not None and config.computed_at > self.started:
+                return False
+            RiskAssessment.objects.filter(contest=self.contest).delete()
+            # The lock serialises the saves; should an assessment of one of
+            # these submissions still exist (e.g. saved under another
+            # contest), it is replaced instead of breaking the unique key.
+            RiskAssessment.objects.bulk_create(
+                [
+                    RiskAssessment(
+                        submission_id=item.submission.id,
+                        contest=self.contest,
+                        user_id=item.user_id,
+                        risk=item.risk,
+                        signals=item.signals,
+                        context=_round_floats(item.context),
+                        computed_at=self.started,
+                    )
+                    for item in items
+                ],
+                batch_size=500,
+                update_conflicts=True,
+                unique_fields=["submission"],
+                update_fields=["contest", "user", "risk", "signals", "context", "computed_at"],
+            )
+            # The time of the data, not of the end of the computation, so that
+            # the results of a later run are recognised as newer.
+            config.computed_at = self.started
+            config.last_submission_id = self.last_submission_id
+            # Shown on the panel, so that the staff know why submissions are missing.
+            config.read_errors = len(self.errors)
+            config.last_error = f"#{self.errors[0][0]}: {self.errors[0][1]}" if self.errors else ""
+            config.save(update_fields=["computed_at", "last_submission_id", "read_errors", "last_error"])
+            self.config = config
+        return True
 
 
 def _round_floats(value):
@@ -928,14 +988,18 @@ def _round_floats(value):
     return value
 
 
-def assess_contest(contest):
-    """Recomputes the risk of all submissions of ``contest``."""
-    return ContestAssessor(contest).run()
+def assess_contest(contest, force=True):
+    """Recomputes the risk of all submissions of ``contest`` (with
+    ``force=False`` only if out of date); see :class:`ContestAssessor`.
+    """
+    return ContestAssessor(contest).run(force=force)
 
 
 def update_if_needed(contest):
+    # Checked without the lock first: opening the panel is the common case,
+    # and the results are usually up to date.
     if needs_update(contest):
-        assess_contest(contest)
+        assess_contest(contest, force=False)
 
 
 def user_rankings(contest):

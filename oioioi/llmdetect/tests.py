@@ -16,7 +16,7 @@ from django.core.files.base import ContentFile, File
 from django.core.management import call_command
 from django.http import HttpResponse
 from django.test import RequestFactory
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.utils import translation
 
 from oioioi.base.tests import TestCase
@@ -36,9 +36,20 @@ from oioioi.llmdetect.models import (
     RiskAssessment,
     SubmissionFeatures,
     get_config,
+    mark_dirty,
 )
 from oioioi.llmdetect.prompts import PROMPTS, PROMPTS_FORMAT, build_prompt, extract_code, parse_references
-from oioioi.llmdetect.scoring import FLAG_THRESHOLD, assess_contest, compute_features, history_submissions, needs_update, read_source, user_rankings
+from oioioi.llmdetect.scoring import (
+    FLAG_THRESHOLD,
+    ContestAssessor,
+    assess_contest,
+    compute_features,
+    history_submissions,
+    needs_update,
+    read_source,
+    update_if_needed,
+    user_rankings,
+)
 from oioioi.problems.models import Problem
 from oioioi.programs.models import ProgramSubmission
 
@@ -1012,6 +1023,79 @@ class _StreamWithoutClose:
     def read(self, size=None):
         data, self.data = self.data, b""
         return data
+
+
+class TestConcurrentAssessments(LLMDetectTestCase):
+    """Two requests (two staff members on the panel, the panel and
+    llmdetect_update) assessing one contest at once.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._camp()
+        self.count = ProgramSubmission.objects.count()
+
+    def test_save_over_existing_results_does_not_break_the_unique_key(self):
+        from django.db.models.query import QuerySet
+
+        assess_contest(self.contest)
+        # As when another request's results were not visible to the DELETE.
+        with patch.object(QuerySet, "delete", return_value=(0, {})):
+            items = assess_contest(self.contest)
+        self.assertEqual(len(items), self.count)
+        self.assertEqual(RiskAssessment.objects.count(), self.count)
+
+    def test_second_request_uses_the_results_of_the_first(self):
+        update_if_needed(self.contest)
+        with patch.object(ContestAssessor, "_compute") as compute:
+            update_if_needed(self.contest)
+            # Out of date when checked without the lock, up to date once locked.
+            self.assertIsNone(ContestAssessor(self.contest).run(force=False))
+        compute.assert_not_called()
+
+    def _during_computation(self, assessor, action):
+        compute = assessor._compute
+
+        def compute_then_act():
+            items = compute()
+            action()
+            return items
+
+        assessor._compute = compute_then_act
+
+    def test_older_run_does_not_overwrite_a_newer_one(self):
+        first = ContestAssessor(self.contest)
+        newer = []
+
+        def another_run_with_a_new_submission():
+            newer.append(self._submit(self.humans[0], self.pis[3], HUMAN_BFS, minutes=200))
+            assess_contest(self.contest)
+
+        self._during_computation(first, another_run_with_a_new_submission)
+        self.assertIsNone(first.run())
+        self.assertTrue(RiskAssessment.objects.filter(submission=newer[0]).exists())
+        self.assertEqual(RiskAssessment.objects.count(), self.count + 1)
+        self.assertEqual(get_config(self.contest).last_submission_id, newer[0].id)
+
+    def test_change_during_the_computation_is_not_lost(self):
+        assessor = ContestAssessor(self.contest)
+        # E.g. a reference added while the contest is being assessed.
+        self._during_computation(assessor, lambda: mark_dirty(self.contest))
+        self.assertIsNotNone(assessor.run())
+        self.assertTrue(get_config(self.contest).dirty)
+        self.assertTrue(needs_update(self.contest))
+
+    def test_failed_computation_leaves_the_contest_out_of_date(self):
+        mark_dirty(self.contest)
+        with patch.object(ContestAssessor, "_compute", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                assess_contest(self.contest)
+        self.assertTrue(get_config(self.contest).dirty)
+
+    def test_assessing_views_run_outside_the_request_transaction(self):
+        for name, kwargs in (("llmdetect_panel", {}), ("llmdetect_recompute", {}), ("llmdetect_user", {"user_id": 1})):
+            view = resolve(reverse(name, kwargs={"contest_id": self.contest.id, **kwargs})).func
+            self.assertIn("default", getattr(view, "_non_atomic_requests", set()), name)
 
 
 class TestNewAnalysisVersion(LLMDetectTestCase):
