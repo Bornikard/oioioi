@@ -76,6 +76,13 @@ class ModelAdmin(admin.ModelAdmin, ObjectWithMixins, metaclass=ModelAdminMeta):
             return safe_redirect(request, request.GET.get("came_from"))
         return super().response_change(request, obj)
 
+    def response_add(self, request, obj, post_url_continue=None):
+        # As after a change: back where the staff came from (e.g. a submission).
+        not_popup = "_popup" not in request.GET and "_popup" not in request.POST
+        if not_popup and "came_from" in request.GET and "_continue" not in request.POST and "_addanother" not in request.POST:
+            return safe_redirect(request, request.GET.get("came_from"))
+        return super().response_add(request, obj, post_url_continue)
+
     def change_view(self, request, object_id, form_url="", extra_context=None):
         response = super().change_view(request, object_id, form_url, extra_context)
         if isinstance(response, TemplateResponse) and "came_from" in request.GET:

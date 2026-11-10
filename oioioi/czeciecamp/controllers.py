@@ -435,9 +435,9 @@ class CzecieCampRankingController(DefaultRankingController):
         if row["combined"]:
             line += [row["daily_sum"], row["stale_sum"]]
             for cell in row["cells"]:
-                line += [_blank_if_none(cell["daily"]), _blank_if_none(cell["stale"])]
+                line += ["DQ", "DQ"] if cell.get("disqualified") else [_blank_if_none(cell["daily"]), _blank_if_none(cell["stale"])]
         else:
-            line += [_blank_if_none(cell["value"]) for cell in row["cells"]]
+            line += ["DQ" if cell.get("disqualified") else _blank_if_none(cell["value"]) for cell in row["cells"]]
         return line
 
 

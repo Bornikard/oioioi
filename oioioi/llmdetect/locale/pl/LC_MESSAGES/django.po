@@ -952,8 +952,11 @@ msgstr[0] "Treść %(counter)s zadania nie jest jeszcze sprawdzona; jego prompty
 msgstr[1] "Treści %(counter)s zadań nie są jeszcze sprawdzone; ich prompty używają tekstu w odczytanej postaci."
 msgstr[2] "Treści %(counter)s zadań nie są jeszcze sprawdzone; ich prompty używają tekstu w odczytanej postaci."
 
-msgid "Submission"
-msgstr "Zgłoszenie"
+msgid "only the staff sees this"
+msgstr "widzi to tylko kadra"
+
+msgid "analysis"
+msgstr "analiza"
 
 msgid "disqualified"
 msgstr "zdyskwalifikowane"
@@ -963,6 +966,25 @@ msgstr "Otwiera formularz dyskwalifikacji wypełniony dla tego zgłoszenia; ucze
 
 msgid "Disqualify this submission"
 msgstr "Zdyskwalifikuj to zgłoszenie"
+
+msgid "Shared code with other participants"
+msgstr "Wspólny kod z innymi uczestnikami"
+
+msgid "open the submission"
+msgstr "otwórz zgłoszenie"
+
+msgid "compare"
+msgstr "porównaj"
+
+msgid "No submission of another participant shares much code with this one."
+msgstr "Żadne zgłoszenie innego uczestnika nie ma z tym wiele wspólnego kodu."
+
+#, python-format
+msgid "Not assessed: submissions of the staff are never assessed, the others once the <a href=\"%(url)s\">LLM detection panel</a> is opened."
+msgstr "Nieocenione: zgłoszenia kadry nigdy nie są oceniane, pozostałe po otwarciu <a href=\"%(url)s\">panelu wykrywania LLM</a>."
+
+msgid "Submission"
+msgstr "Zgłoszenie"
 
 msgid "No signals."
 msgstr "Brak sygnałów."
@@ -982,14 +1004,20 @@ msgstr "Zwykłe podobieństwo do LLM"
 msgid "Differs most from own style in"
 msgstr "Najbardziej odbiega od własnego stylu w"
 
-msgid "Most similar submission of another participant"
-msgstr "Najbardziej podobne zgłoszenie innego uczestnika"
+msgid "show the analysis"
+msgstr "pokaż analizę"
+
+msgid "Sent after the round."
+msgstr "Wysłane po rundzie."
+
+msgid "after round"
+msgstr "po turze"
+
+msgid "Share of this submission's code (without code most participants share and without the author's own template) found in the other submission. Similar code is a reason to compare, not a proof: they may both have used the same LLM, or one copied the other."
+msgstr "Część kodu tego zgłoszenia (bez kodu wspólnego dla większości uczestników i bez własnego szablonu autora), którą znaleziono w drugim zgłoszeniu. Podobny kod to powód do porównania, nie dowód: oboje mogli użyć tego samego LLM albo jedno skopiowało od drugiego."
 
 msgid "Timeline"
 msgstr "Oś czasu"
-
-msgid "show the analysis"
-msgstr "pokaż analizę"
 
 msgid "Habits"
 msgstr "Nawyki"
@@ -1002,6 +1030,12 @@ msgstr "To zgłoszenie"
 
 msgid "Many participants changed this on this problem, so it is not counted."
 msgstr "Wielu uczestników zmieniło to w tym zadaniu, więc nie jest liczone."
+
+msgid "close"
+msgstr "zamknij"
+
+msgid "Marked: lines in both programs (ignoring spaces)."
+msgstr "Zaznaczone: wiersze obecne w obu programach (bez względu na spacje)."
 
 msgid "Code unavailable."
 msgstr "Kod niedostępny."
@@ -1033,17 +1067,11 @@ msgstr "Ryzyko"
 msgid "Signals"
 msgstr "Sygnały"
 
-msgid "open the submission"
-msgstr "otwórz zgłoszenie"
-
 msgid "supervised"
 msgstr "nadzorowane"
 
 msgid "Sent after the round; timing, score and similarity to other participants are not counted."
 msgstr "Wysłane po turze; czas, wynik i podobieństwo do innych uczestników nie są brane pod uwagę."
-
-msgid "after round"
-msgstr "po turze"
 
 msgid "No submissions."
 msgstr "Brak zgłoszeń."
@@ -1080,6 +1108,10 @@ msgstr "zmienione"
 #, python-format
 msgid "%(history)s from earlier contests"
 msgstr "%(history)s z wcześniejszych konkursów"
+
+#, python-format
+msgid "Compared with %(other)s"
+msgstr "Porównanie z: %(other)s"
 
 msgid "Decide only after talking with the participant."
 msgstr "Decyduj dopiero po rozmowie z uczestnikiem."

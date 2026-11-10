@@ -4,6 +4,7 @@ from django.db import transaction
 
 from oioioi.contests.controllers import ContestController
 from oioioi.llmdetect.models import SubmissionFeatures, mark_dirty
+from oioioi.programs.controllers import ProgrammingContestController
 from oioioi.programs.models import ProgramSubmission
 
 logger = logging.getLogger(__name__)
@@ -52,3 +53,29 @@ class LLMDetectContestControllerMixin:
 
 
 ContestController.mix_in(LLMDetectContestControllerMixin)
+
+
+class LLMDetectSubmissionMixin:
+    """Shows the staff, on the page of a submission, its LLM detection risk,
+    the submissions of other participants it shares code with, and a button
+    to disqualify it. Only stored results are shown: opening a submission
+    never starts an assessment.
+    """
+
+    def render_submission(self, request, submission):
+        html = super().render_submission(request, submission)
+        from oioioi.contests.utils import is_contest_admin
+
+        if getattr(request, "contest", None) is None or not is_contest_admin(request):
+            return html
+        try:
+            from oioioi.llmdetect.views import submission_box
+
+            return html + submission_box(request, submission)
+        except Exception:
+            # Never break the submission page.
+            logger.warning("Cannot render the LLM detection of submission %s", submission.id, exc_info=True)
+            return html
+
+
+ProgrammingContestController.mix_in(LLMDetectSubmissionMixin)

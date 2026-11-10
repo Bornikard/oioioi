@@ -7,6 +7,7 @@
 {{ block.super }}
 <style>
     .llm-code { max-height: 32rem; overflow: auto; font-size: .8rem; white-space: pre; background: var(--bs-tertiary-bg); padding: .5rem; }
+    .llm-common { background: var(--bs-warning-bg-subtle); }
     .llm-bar { height: .5rem; background: var(--bs-danger); border-radius: .25rem; }
 </style>
 {% endblock %}
@@ -52,7 +53,24 @@
             {% trans "Usual LLM-likeness" %}: {{ profile.style|percent }}.
         </p>
         {% if profile_features %}<p>{% trans "Differs most from own style in" %}: {{ profile_features|join:", " }}.</p>{% endif %}
-        {% if peer and peer_user %}<p>{% trans "Most similar submission of another participant" %}: <a href="{% url 'llmdetect_user' contest_id=contest.id user_id=peer_user.id %}?submission={{ peer.submission }}">{{ peer_user.get_full_name|default:peer_user.username }}</a> <a href="{% url 'submission' contest_id=contest.id submission_id=peer.submission %}">#{{ peer.submission }}</a> ({{ peer.similarity|percent }}).</p>{% endif %}
+        <h3 class="h6" id="peers">{% trans "Shared code with other participants" %}</h3>
+        {% if peers %}
+        <table class="table table-sm small mb-1">
+            <tbody>
+            {% for p in peers %}
+            <tr{% if compare and compare.submission.id == p.submission %} class="table-active"{% endif %}>
+                <td><a href="{% url 'llmdetect_user' contest_id=contest.id user_id=p.user.id %}?submission={{ p.submission }}" title="{% trans 'show the analysis' %}">{{ p.user.get_full_name|default:p.user.username }}</a></td>
+                <td><a href="{% url 'submission' contest_id=contest.id submission_id=p.submission %}" title="{% trans 'open the submission' %}">#{{ p.submission }}</a>{% if p.during_round is False %} <span class="badge text-bg-light border" title="{% trans 'Sent after the round.' %}">{% trans "after round" %}</span>{% endif %}</td>
+                <td class="text-end"><strong>{{ p.similarity|percent }}</strong></td>
+                <td><a href="?submission={{ selected.submission_id }}&amp;compare={{ p.submission }}#compare">{% trans "compare" %}</a></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p class="form-text mt-0">{% trans "Share of this submission's code (without code most participants share and without the author's own template) found in the other submission. Similar code is a reason to compare, not a proof: they may both have used the same LLM, or one copied the other." %}</p>
+        {% else %}
+        <p class="text-muted small">{% trans "No submission of another participant shares much code with this one." %}</p>
+        {% endif %}
         <h3 class="h6">{% trans "Timeline" %}</h3>
         <ul class="list-unstyled">
             {% for date, label, a in timeline %}
@@ -79,6 +97,27 @@
     {% endfor %}
     </tbody>
 </table>
+</div>
+{% endif %}
+
+{% if compare %}
+<h3 class="h5 mt-3" id="compare">
+    {% blocktrans with other=compare.submission.user.get_full_name|default:compare.submission.user.username %}Compared with {{ other }}{% endblocktrans %}
+    <a href="{% url 'submission' contest_id=contest.id submission_id=compare.submission.id %}">#{{ compare.submission.id }}</a>{% if compare.similarity is not None %} ({{ compare.similarity|percent }}){% endif %}
+    <a class="small ms-2" href="?submission={{ selected.submission_id }}">{% trans "close" %}</a>
+</h3>
+<p class="form-text mt-0">{% trans "Marked: lines in both programs (ignoring spaces)." %}</p>
+<div class="row g-2 mb-3">
+    <div class="col-lg-6">
+        <h4 class="h6">{{ profile_user.get_full_name|default:profile_user.username }}, #{{ selected.submission_id }}</h4>
+        <div class="llm-code">{% for line, common in compare.lines %}<span{% if common %} class="llm-common"{% endif %}>{{ line }}</span>
+{% endfor %}</div>
+    </div>
+    <div class="col-lg-6">
+        <h4 class="h6">{{ compare.submission.user.get_full_name|default:compare.submission.user.username }}, #{{ compare.submission.id }} ({{ compare.submission.date|date:"d.m H:i" }})</h4>
+        <div class="llm-code">{% for line, common in compare.other_lines %}<span{% if common %} class="llm-common"{% endif %}>{{ line }}</span>
+{% endfor %}</div>
+    </div>
 </div>
 {% endif %}
 
@@ -111,7 +150,7 @@
             <td class="text-nowrap small">{{ a.submission.date|date:"d.m H:i" }}</td>
             <td class="small">{{ a.submission.get_score_display|default:"" }}</td>
             <td><span class="badge text-bg-{{ a.risk|risk_class }}">{{ a.risk|percent }}</span></td>
-            <td class="small">{% for s in row.signals|slice:":3" %}{% if s.contribution > 0.2 %}{{ s.label }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}</td>
+            <td class="small">{{ row.labels|join:", " }}</td>
         </tr>
         {% endwith %}
     {% empty %}

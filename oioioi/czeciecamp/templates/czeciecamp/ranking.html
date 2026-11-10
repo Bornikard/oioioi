@@ -42,8 +42,8 @@
                         {% if show_percentage %}<td class="text-end text-muted">{{ row.percentage|floatformat:2 }}</td>{% endif %}
                         {% if show_difference %}<td class="text-end text-muted">{% if row.diff %}{{ row.diff }}{% endif %}</td>{% endif %}
                         {% for cell in row.cells %}
-                            <td class="text-end"{% if is_admin and cell.disqualified %} title="{% trans 'A submission to this problem is disqualified; the problem counts 0.' %}"{% endif %}>
-                                {% if is_admin and cell.disqualified %}<span class="badge text-bg-danger">DQ</span>{% endif %}
+                            <td class="text-end"{% if cell.disqualified %} title="{% trans 'A submission to this problem is disqualified; the problem counts 0.' %}"{% endif %}>
+                                {% if cell.disqualified %}<span class="badge text-bg-danger">DQ</span>{% endif %}
                                 {% if is_admin and cell.url %}<a href="{{ cell.url }}">{% endif %}
                                 {% if is_main %}
                                     {% if cell.daily is not None or cell.stale is not None %}
