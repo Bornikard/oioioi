@@ -80,6 +80,10 @@ MIN_VARIANCE = 0.02
 PROFILE_PER_PROBLEM = 3
 # A profile uses at most this many (the latest) submissions from earlier contests.
 HISTORY_PER_USER = 40
+# Submissions of other participants shown as sharing code with one: at most
+# this many (one per participant), with at least this share of its code.
+PEERS_SHOWN = 5
+PEERS_SHOWN_FROM = 0.2
 # A user's risk is the sum of their this many worst problems.
 USER_TOP_PROBLEMS = 3
 # Habits that change together: an editor that formats the code changes all
@@ -501,9 +505,22 @@ class ContestAssessor:
             for fingerprint in item.specific:
                 counts.update(index[fingerprint])
             user_id = item.user_id
+            # The closest submission of each other participant, the closest first.
+            peers = []
+            seen = {user_id}
+            for position, shared in counts.most_common():
+                if users[position] in seen:
+                    continue
+                seen.add(users[position])
+                similarity = shared / len(item.specific)
+                if similarity < PEERS_SHOWN_FROM or len(peers) == PEERS_SHOWN:
+                    break
+                other = items[position]
+                peers.append({"submission": other.submission.id, "user": other.user_id, "similarity": similarity, "during_round": other.during_round})
             best = next(((position, shared) for position, shared in counts.most_common() if users[position] != user_id), None)
             if best is None:
                 continue
+            item.context["peers"] = peers
             other, shared = items[best[0]], best[1]
             similarity = shared / len(item.specific)
             value = clamp((similarity - 0.5) / 0.4)

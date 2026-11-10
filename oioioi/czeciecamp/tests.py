@@ -345,10 +345,12 @@ class TestCampRankings(CampTestCase):
         pis = [pi for pi, _visible in data["problem_instances"]]
         self.assertTrue(row["cells"][pis.index(self.pi1)]["disqualified"])
         self.assertIsNone(row["cells"][pis.index(self.pi1)]["stale"])
-        # Shown as DQ to admins only.
-        self.assertNotIn(">DQ<", self.rcontroller._render_ranking_page(f"regular#{self.stale.id}#test", data, 1))
+        # Shown as DQ to everybody, also in the CSV.
+        self.assertIn(">DQ<", self.rcontroller._render_ranking_page(f"regular#{self.stale.id}#test", data, 1))
         admin = self._ranking(self.stale, "admin")
         self.assertIn(">DQ<", self.rcontroller._render_ranking_page(f"admin#{self.stale.id}#test", admin, 1))
+        csv_row = self.rcontroller._get_csv_row(f"admin#{self.stale.id}#test", self._row(admin, self.user1))
+        self.assertIn("DQ", csv_row)
 
     def test_negative_weight(self):
         self._submit(self.user1, self.pi1, _date(1, hour=1), 50)

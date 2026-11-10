@@ -1,0 +1,37 @@
+{% load i18n llmdetect_tags %}
+<div class="card mb-3 border-secondary-subtle" id="llmdetect">
+    <div class="card-body py-2 small">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+            <strong>{% trans "LLM detection" %}</strong>
+            <span class="text-muted">({% trans "only the staff sees this" %})</span>
+            {% if assessment %}
+                <span class="badge text-bg-{{ assessment.risk|risk_class }}">{{ assessment.risk|percent }}</span>
+                {% for s in signals %}<span class="text-muted">{{ s.label }}{% if not forloop.last %},{% endif %}</span>{% endfor %}
+                <a href="{{ analysis_url }}">{% trans "analysis" %}</a>
+            {% endif %}
+            {% if disqualification_enabled %}
+                <span class="ms-auto"></span>
+                {% if selected_disqualified %}
+                <span class="badge text-bg-danger">{% trans "disqualified" %}</span>
+                {% elif disqualify_url %}
+                <a class="btn btn-sm btn-outline-danger py-0" href="{{ disqualify_url }}" title="{% trans 'Opens the disqualification form filled in for this submission; the participant will see its title and content.' %}">{% trans "Disqualify this submission" %}</a>
+                {% endif %}
+            {% endif %}
+        </div>
+        {% if assessment %}
+            {% if peers %}
+            <div>
+                {% trans "Shared code with other participants" %}:
+                {% for p in peers %}
+                    <a href="{% url 'submission' contest_id=contest.id submission_id=p.submission %}" title="{% trans 'open the submission' %}">{{ p.user.get_full_name|default:p.user.username }} #{{ p.submission }}</a>
+                    <a href="{{ analysis_url }}&amp;compare={{ p.submission }}#compare" title="{% trans 'compare' %}">({{ p.similarity|percent }})</a>{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-muted">{% trans "No submission of another participant shares much code with this one." %}</div>
+            {% endif %}
+        {% else %}
+            <div class="text-muted">{% blocktrans with url=panel_url %}Not assessed: submissions of the staff are never assessed, the others once the <a href="{{ url }}">LLM detection panel</a> is opened.{% endblocktrans %}</div>
+        {% endif %}
+    </div>
+</div>

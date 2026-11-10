@@ -3,6 +3,7 @@ import io
 import json
 import os
 import random
+import re
 import tempfile
 import time
 from datetime import UTC, datetime, timedelta
@@ -1096,6 +1097,95 @@ class TestConcurrentAssessments(LLMDetectTestCase):
         for name, kwargs in (("llmdetect_panel", {}), ("llmdetect_recompute", {}), ("llmdetect_user", {"user_id": 1})):
             view = resolve(reverse(name, kwargs={"contest_id": self.contest.id, **kwargs})).func
             self.assertIn("default", getattr(view, "_non_atomic_requests", set()), name)
+
+
+class TestSharedCodeAndDisqualifying(LLMDetectTestCase):
+    """Submissions of others sharing code, on the participant's page and on
+    the page of a submission, and disqualifying from there.
+    """
+
+    def setUp(self):
+        super().setUp()
+        for i, user in enumerate(self.humans):
+            for day, pi in enumerate(self.pis[:2]):
+                self._submit(user, pi, human_code(f"{i}-{day}"), minutes=90 + 7 * i)
+        # Three participants send the same solution, one of them changed a bit.
+        self.original = self._submit(self.humans[0], self.pis[2], HUMAN_BFS, minutes=30)
+        self.copy = self._submit(self.humans[1], self.pis[2], HUMAN_BFS.replace("d[1]=0;", "d[1]=0;//start"), minutes=40)
+        self.third = self._submit(self.humans[2], self.pis[2], HUMAN_BFS, minutes=50)
+        for i, user in enumerate(self.humans[3:]):
+            self._submit(user, self.pis[2], human_code(f"own-{i}"), minutes=60)
+        assess_contest(self.contest)
+        self.assertTrue(self.client.login(username="test_admin"))
+
+    def _user_page(self, user, submission, **params):
+        url = reverse("llmdetect_user", kwargs={"contest_id": self.contest.id, "user_id": user.id}) + f"?submission={submission.id}"
+        return self.client.get(url + "".join(f"&{k}={v}" for k, v in params.items()))
+
+    def test_list_of_shared_code_and_comparison(self):
+        peers = RiskAssessment.objects.get(submission=self.copy).context["peers"]
+        self.assertEqual({peer["submission"] for peer in peers}, {self.original.id, self.third.id})
+        self.assertTrue(all(peer["similarity"] > 0.9 for peer in peers))
+        response = self._user_page(self.humans[1], self.copy)
+        self.assertEqual([peer["submission"] for peer in response.context["peers"]][:2], [p["submission"] for p in peers][:2])
+        self.assertContains(response, f"compare={self.original.id}")
+        response = self._user_page(self.humans[1], self.copy, compare=self.original.id)
+        compare = response.context["compare"]
+        self.assertEqual(compare["submission"], self.original)
+        marked = dict(compare["lines"])
+        self.assertTrue(marked["    queue<int> q;q.push(1);"])
+        self.assertFalse(marked["    d[1]=0;//start"])  # only in this one
+        self.assertFalse(marked["}"])  # too short to mean anything
+        self.assertContains(response, 'class="llm-common"')
+
+    def test_comparison_only_with_others_of_this_contest(self):
+        other = Contest.objects.create(id="other", name="Other", controller_name="oioioi.programs.controllers.ProgrammingContestController")
+        round = Round.objects.create(contest=other, name="R", start_date=T0)
+        foreign = self._submit(
+            self.humans[0], ProblemInstance.objects.create(problem=self.pis[0].problem, round=round, contest=other, short_name="x"), HUMAN_BFS, 5
+        )
+        for wanted in (foreign.id, self.copy.id, "abc"):
+            self.assertIsNone(self._user_page(self.humans[1], self.copy, compare=wanted).context["compare"])
+
+    def test_submission_page_shows_the_staff_the_detection(self):
+        url = reverse("submission", kwargs={"contest_id": self.contest.id, "submission_id": self.copy.id})
+        response = self.client.get(url)
+        self.assertContains(response, 'id="llmdetect"')
+        self.assertContains(response, "Shared code with other participants")
+        self.assertContains(response, f"#{self.original.id}")
+        self.assertContains(response, "Disqualify this submission")
+        # Participants never see it, not even on their own submission.
+        self.assertTrue(self.client.login(username=self.humans[1].username))
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'id="llmdetect"')
+
+    def test_submission_page_never_starts_an_assessment(self):
+        mark_dirty(self.contest)
+        url = reverse("submission", kwargs={"contest_id": self.contest.id, "submission_id": self.copy.id})
+        with patch.object(ContestAssessor, "_compute") as compute:
+            self.assertEqual(self.client.get(url).status_code, 200)
+        compute.assert_not_called()
+
+    def test_disqualify_from_the_submission_page(self):
+        from oioioi.disqualification.models import Disqualification
+
+        url = reverse("submission", kwargs={"contest_id": self.contest.id, "submission_id": self.copy.id})
+        page = self.client.get(url).content.decode()
+        form_url = re.search(r'href="([^"]*disqualification/disqualification/add/[^"]*)"', page).group(1).replace("&amp;", "&")
+        self.assertIn(f"submission={self.copy.id}", form_url)
+        self.assertIn("came_from=", form_url)
+        form = self.client.get(form_url)
+        self.assertEqual(form.status_code, 200)
+        initial = form.context["adminform"].form.initial
+        response = self.client.post(
+            form_url,
+            {"user": self.humans[1].id, "submission": self.copy.id, "title": initial["title"], "content": initial["content"], "guilty": "on"},
+        )
+        # Back on the submission page, now marked.
+        self.assertRedirects(response, url, fetch_redirect_response=False)
+        self.assertTrue(Disqualification.objects.filter(submission=self.copy, guilty=True).exists())
+        self.assertNotContains(self.client.get(url), "Disqualify this submission")
 
 
 class TestNewAnalysisVersion(LLMDetectTestCase):

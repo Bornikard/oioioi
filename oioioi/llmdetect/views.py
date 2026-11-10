@@ -9,6 +9,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.template.loader import render_to_string
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils import timezone
@@ -25,6 +26,7 @@ from oioioi.llmdetect.models import LLMReferenceSolution, LLMStatement, ProblemV
 from oioioi.llmdetect.prompts import PROMPTS, prompts_file
 from oioioi.llmdetect.scoring import (
     FLAG_THRESHOLD,
+    PEERS_SHOWN_FROM,
     SUBMISSION_KINDS,
     assess_contest,
     contest_submissions,
@@ -335,14 +337,18 @@ def user_view(request, user_id):
     if selected is None and assessments:
         selected = max(assessments, key=lambda a: a.risk)
 
-    peers = {a.context.get("peer", {}).get("user") for a in assessments if a.context.get("peer")} | {
-        s.get("detail", {}).get("user") for a in assessments for s in a.signals.values()
-    }
+    peers = (
+        {a.context.get("peer", {}).get("user") for a in assessments if a.context.get("peer")}
+        | {peer.get("user") for a in assessments for peer in a.context.get("peers", [])}
+        | {s.get("detail", {}).get("user") for a in assessments for s in a.signals.values()}
+    )
     users = User.objects.in_bulk([u for u in peers if u])
     rows = [
         {
             "assessment": a,
             "signals": signal_rows(a, users),
+            # The main ones only; weak signals are on the submission's page.
+            "labels": [str(row["label"]) for row in signal_rows(a, users)[:3] if row["contribution"] > 0.2],
             "flagged": a.risk >= FLAG_THRESHOLD,
             "url": _user_url(contest, user.id, a.submission_id),
         }
@@ -359,18 +365,82 @@ def user_view(request, user_id):
     }
     if selected is not None:
         context.update(_comparison(contest, user, selected, assessments, users))
+        context.update(_peers_and_compare(request, contest, user, selected, users, context["selected_source"]))
         if context["disqualification_enabled"]:
-            context.update(_disqualification(selected))
+            context.update(_disqualification(selected.submission, came_from=request.get_full_path()))
     return TemplateResponse(request, "llmdetect/user.html", context)
 
 
-def _disqualification(selected):
-    """Whether the selected submission is disqualified, and a link to the
-    disqualification form filled in for it otherwise.
+def peers_of(assessment, users):
+    """Submissions of other participants sharing code with ``assessment``,
+    the closest first: ``{"submission", "user", "similarity", ...}``.
+    """
+    peers = assessment.context.get("peers")
+    if peers is None:  # assessed before the list was stored
+        peer = assessment.context.get("peer")
+        peers = [peer] if peer and peer.get("similarity", 0) >= PEERS_SHOWN_FROM else []
+    return [{**peer, "user": users.get(peer["user"])} for peer in peers if users.get(peer["user"])]
+
+
+# Lines this short ("}", "{", "return 0;") are in every program.
+COMMON_LINE_MIN = 6
+
+
+def _normalized_lines(source):
+    return {"".join(line.split()) for line in source.splitlines()}
+
+
+def _marked_lines(source, other):
+    """``source`` as (line, also in ``other``) pairs, ignoring whitespace."""
+    common = {line for line in _normalized_lines(source) & _normalized_lines(other) if len(line) >= COMMON_LINE_MIN}
+    return [(line, "".join(line.split()) in common) for line in source.splitlines()]
+
+
+def _peers_and_compare(request, contest, user, selected, users, source):
+    """The similar submissions of others, and the one chosen with ``?compare=``
+    next to the selected one, with the lines they share marked.
+    """
+    context = {"peers": peers_of(selected, users), "compare": None}
+    wanted = request.GET.get("compare")
+    if not wanted or not wanted.isdigit() or source is None:
+        return context
+    other = ProgramSubmission.objects.filter(id=wanted, problem_instance__contest=contest).exclude(user=user).select_related("user", "problem_instance").first()
+    other_source = _source_or_none(other) if other is not None else None
+    if other_source is None:
+        return context
+    similarity = next((peer["similarity"] for peer in context["peers"] if peer["submission"] == other.id), None)
+    context["compare"] = {
+        "submission": other,
+        "similarity": similarity,
+        "lines": _marked_lines(source, other_source),
+        "other_lines": _marked_lines(other_source, source),
+    }
+    return context
+
+
+def submission_box(request, submission):
+    """The LLM detection box on the page of a submission, for the staff."""
+    contest = request.contest
+    assessment = RiskAssessment.objects.filter(submission_id=submission.id, contest=contest).first()
+    context = {"assessment": assessment, "peers": [], "disqualification_enabled": "oioioi.disqualification" in settings.INSTALLED_APPS}
+    if assessment is not None:
+        users = User.objects.in_bulk([peer["user"] for peer in assessment.context.get("peers", [])] + [assessment.context.get("peer", {}).get("user")])
+        context["peers"] = peers_of(assessment, users)
+        context["signals"] = [row for row in signal_rows(assessment, users) if row["contribution"] > 0.2][:3]
+        context["analysis_url"] = _user_url(contest, assessment.user_id, submission.id)
+    context["panel_url"] = _panel_url(contest)
+    if context["disqualification_enabled"] and submission.user_id is not None:
+        context.update(_disqualification(submission, came_from=request.get_full_path()))
+    return render_to_string("llmdetect/submission_box.html", context, request=request)
+
+
+def _disqualification(submission, came_from=None):
+    """Whether the submission is disqualified, and a link to the
+    disqualification form filled in for it otherwise (back to ``came_from``
+    once saved).
     """
     from oioioi.disqualification.models import Disqualification
 
-    submission = selected.submission
     if Disqualification.objects.filter(submission=submission, guilty=True).exists():
         return {"selected_disqualified": True}
     params = urlencode(
@@ -380,6 +450,7 @@ def _disqualification(selected):
             "title": _("Solution not written by yourself"),
             "content": _("Submission #%(id)s (%(problem)s) was not written by you, so the problem counts 0.")
             % {"id": submission.id, "problem": submission.problem_instance.short_name},
+            **({"came_from": came_from} if came_from else {}),
         }
     )
     return {"disqualify_url": f"{reverse('oioioiadmin:disqualification_disqualification_add')}?{params}"}
