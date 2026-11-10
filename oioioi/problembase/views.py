@@ -100,7 +100,7 @@ def _family_rows(family_ids, rejected=frozenset()):
         date = pi.round.start_date if pi.round else pi.contest.creation_date
         rows[family_of[pi.problem_id]].uses.append(Use(pi.contest, pi.round.name if pi.round else "", date))
     for row in rows.values():
-        row.uses.sort(key=lambda use: use.date)
+        row.uses.sort(key=lambda use: use.date, reverse=True)  # newest first
     for description in ProblemDescription.objects.filter(family_id__in=family_ids):
         rows[description.family_id].description = description
     return [rows[fid] for fid in family_ids if fid in rows]
@@ -262,7 +262,7 @@ def family_view(request, family_id):
         else:
             hashes = {entry["hash"] for entry in fp.solution_hashes}
             solution = "same" if any(hash_count[h] > 1 for h in hashes) else ("different" if hashes else None)
-        instances = sorted(uses[problem.id], key=lambda pi: pi.round.start_date if pi.round else pi.contest.creation_date)
+        instances = sorted(uses[problem.id], key=lambda pi: pi.round.start_date if pi.round else pi.contest.creation_date, reverse=True)
         for pi in instances:
             pi.statement_url = reverse("problem_statement", kwargs={"contest_id": pi.contest_id, "problem_instance": pi.short_name})
         packages.append(

@@ -91,8 +91,8 @@ msgstr "Dodaj opis"
 msgid "Apply"
 msgstr "Zastosuj"
 
-msgid "Ban: nobody"
-msgstr "Ban: nikt"
+msgid "Participants: none selected"
+msgstr "Uczestnicy: nie wybrano"
 
 msgid "Cancel"
 msgstr "Anuluj"
@@ -127,8 +127,8 @@ msgstr "Nie znaleziono zadań."
 msgid "No suggestions."
 msgstr "Brak sugestii."
 
-msgid "Nobody from the ban list has seen this problem."
-msgstr "Nikt z listy ban nie widział tego zadania."
+msgid "None of the selected participants has seen this problem."
+msgstr "Nikt z wybranych uczestników nie widział tego zadania."
 
 msgid "Packages"
 msgstr "Paczki"
@@ -263,11 +263,11 @@ msgstr[1] "Pominięto %(counter)s odrzucone paczki."
 msgstr[2] "Pominięto %(counter)s odrzuconych paczek."
 
 #, python-format
-msgid "Ban: %(counter)s person"
-msgid_plural "Ban: %(counter)s people"
-msgstr[0] "Ban: %(counter)s osoba"
-msgstr[1] "Ban: %(counter)s osoby"
-msgstr[2] "Ban: %(counter)s osób"
+msgid "Participants: %(counter)s person"
+msgid_plural "Participants: %(counter)s people"
+msgstr[0] "Uczestnicy: %(counter)s osoba"
+msgstr[1] "Uczestnicy: %(counter)s osoby"
+msgstr[2] "Uczestnicy: %(counter)s osób"
 
 #, python-format
 msgid "%(counter)s problem"

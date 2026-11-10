@@ -390,3 +390,18 @@ class TestRejection(ProblemBaseTestCase):
         self.client.post(reverse("problembase_reject_family", kwargs={"contest_id": "c1", "family_id": family_of(third).id}))
         self.assertIn(third.id, self.rejected())
         self.assertNotIn(self.unique.id, self.rejected())
+
+
+class TestContestOrder(ProblemBaseTestCase):
+    def test_newest_contest_first(self):
+        problem = self._problem("aaa", "Pierwsze")
+        now = timezone.now()
+        for i, name in enumerate(["Najstarszy", "Sredni", "Najnowszy", "Czwarty"]):
+            contest = Contest.objects.create(id=f"c{i}", name=name, controller_name="oioioi.participants.tests.ParticipantsContestController")
+            rnd = Round.objects.create(contest=contest, name="R", start_date=now - timedelta(days=100 - i * 10 if name != "Czwarty" else 200))
+            ProblemInstance.objects.create(problem=problem, contest=contest, round=rnd, short_name="aaa")
+        ensure_families()
+        from oioioi.problembase.views import _family_rows
+
+        (row,) = _family_rows([family_of(problem).id])
+        self.assertEqual([use.contest.name for use in row.contests], ["Najnowszy", "Sredni", "Najstarszy", "Czwarty"])

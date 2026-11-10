@@ -2,10 +2,10 @@
 <details class="pb-ban mb-3"{% if ban.unknown_logins %} open{% endif %}>
     <summary>
         {% if ban %}
-            <span class="pb-seen">{% blocktrans count counter=ban.users|length %}Ban: {{ counter }} person{% plural %}Ban: {{ counter }} people{% endblocktrans %}</span>
+            <span class="pb-seen">{% blocktrans count counter=ban.users|length %}Participants: {{ counter }} person{% plural %}Participants: {{ counter }} people{% endblocktrans %}</span>
             {% if ban.contests %}<span class="pb-muted">· {% for contest in ban.contests %}{{ contest.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}
         {% else %}
-            {% trans "Ban: nobody" %}
+            {% trans "Participants: none selected" %}
         {% endif %}
     </summary>
     <form method="get" class="row g-2 mt-1">
