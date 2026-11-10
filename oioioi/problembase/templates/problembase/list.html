@@ -1,0 +1,89 @@
+{% extends "base-with-menu.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Problem base" %}{% endblock %}
+
+{% block styles %}
+{{ block.super }}
+{% include "problembase/_styles.html" %}
+{% endblock %}
+
+{% block main-content %}
+<div class="d-flex align-items-baseline gap-3 flex-wrap">
+    <h1 class="me-auto">{% trans "Problem base" %}</h1>
+    <a href="{% url 'problembase_suggestions' %}">{% trans "Merge suggestions" %}</a>
+</div>
+
+<form method="get" class="d-flex gap-2 mb-2" role="search">
+    {% for key, value in request.GET.lists %}{% if key == "ban" or key == "ban_contest" or key == "ban_logins" %}{% for v in value %}<input type="hidden" name="{{ key }}" value="{{ v }}">{% endfor %}{% endif %}{% endfor %}
+    <input type="search" class="form-control form-control-sm" style="max-width: 24rem" name="q" value="{{ query }}" placeholder="{% trans 'Name, short name or contest' %}">
+    {% if ban %}
+        <div class="form-check align-self-center">
+            <input class="form-check-input" type="checkbox" name="hide_seen" value="1" id="pb-hide-seen"{% if hide_seen %} checked{% endif %} onchange="this.form.submit()">
+            <label class="form-check-label" for="pb-hide-seen">{% trans "Hide seen" %}</label>
+        </div>
+    {% endif %}
+    <button type="submit" class="btn btn-sm btn-outline-secondary">{% trans "Search" %}</button>
+</form>
+
+{% with keep=keep_for_ban %}{% include "problembase/_ban.html" %}{% endwith %}
+
+<form method="post" action="{% url 'problembase_merge' %}" id="pb-merge-form">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+</form>
+
+<div class="d-flex align-items-baseline gap-3 mb-1">
+    <span class="pb-muted me-auto">
+        {% blocktrans count counter=family_count %}{{ counter }} problem{% plural %}{{ counter }} problems{% endblocktrans %}{% if ban %} · <span class="pb-seen">{% blocktrans with seen=seen_count %}{{ seen }} seen{% endblocktrans %}</span>{% endif %}
+    </span>
+    <button type="submit" form="pb-merge-form" class="btn btn-sm btn-outline-primary">{% trans "Merge selected" %}</button>
+</div>
+
+<div class="table-responsive">
+<table class="table table-sm pb-table">
+    <thead>
+        <tr>
+            <th></th>
+            <th>{% trans "Problem" %}</th>
+            <th class="text-end">{% trans "Rating" %}</th>
+            <th>{% trans "Contests" %}</th>
+            {% if ban %}<th>{% trans "Seen" %}</th>{% endif %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+        <tr>
+            <td><input type="checkbox" class="form-check-input" name="family" value="{{ row.family.id }}" form="pb-merge-form" aria-label="{% trans 'Select' %}"></td>
+            <td>
+                <a href="{% url 'problembase_family' family_id=row.family.id %}{% if ban_query %}?{{ ban_query }}{% endif %}">{{ row.name }}</a>
+                <span class="pb-muted">{{ row.short_names|join:", " }}{% if row.problems|length > 1 %} · {% blocktrans count counter=row.problems|length %}{{ counter }} package{% plural %}{{ counter }} packages{% endblocktrans %}{% endif %}</span>
+                {% if row.description %}
+                    <div class="pb-summary">{{ row.description.statement }}</div>
+                    {% if row.description.rating_reason %}<div class="pb-muted">{{ row.description.rating_reason }}</div>{% endif %}
+                {% endif %}
+            </td>
+            <td class="text-end pb-rating">{{ row.description.rating|default_if_none:"" }}</td>
+            <td class="pb-muted">
+                {% for use in row.contests|slice:":3" %}{{ use.contest.name }} {{ use.date|date:"Y" }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+                {% if row.contests|length > 3 %}<br>+{{ row.contests|length|add:"-3" }}{% endif %}
+            </td>
+            {% if ban %}
+                <td>{% if row.seen %}<a class="pb-seen" href="{% url 'problembase_family' family_id=row.family.id %}?{{ ban_query }}#seen">{{ row.seen|length }}</a>{% endif %}</td>
+            {% endif %}
+        </tr>
+    {% empty %}
+        <tr><td colspan="5" class="pb-muted">{% trans "No problems found." %}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% if page.has_other_pages %}
+<nav class="d-flex gap-3 align-items-baseline">
+    {% if page.has_previous %}<a href="?{{ page_query }}&amp;page={{ page.previous_page_number }}">&larr; {% trans "previous" %}</a>{% endif %}
+    <span class="pb-muted">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?{{ page_query }}&amp;page={{ page.next_page_number }}">{% trans "next" %} &rarr;</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

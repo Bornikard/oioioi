@@ -1,0 +1,107 @@
+{% extends "base-with-menu.html" %}
+{% load i18n %}
+
+{% block title %}{{ row.name }} · {% trans "Problem base" %}{% endblock %}
+
+{% block styles %}
+{{ block.super }}
+{% include "problembase/_styles.html" %}
+{% endblock %}
+
+{% block main-content %}
+<p class="pb-muted mb-1"><a href="{% url 'problembase_list' %}{% if ban_query %}?{{ ban_query }}{% endif %}">&larr; {% trans "Problem base" %}</a></p>
+<div class="d-flex align-items-baseline gap-3 flex-wrap">
+    <h1>{{ row.name }}</h1>
+    <span class="pb-muted">{{ row.short_names|join:", " }}</span>
+    {% if description.rating %}<span class="pb-rating ms-auto fs-5" title="{% trans 'Rating' %}">{{ description.rating }}</span>{% endif %}
+</div>
+
+{% include "problembase/_ban.html" %}
+
+{% if edit %}
+    <form method="post" class="mb-4" style="max-width: 60rem">
+        {% csrf_token %}
+        <input type="hidden" name="ban_query" value="{{ ban_query }}">
+        {% include "ingredients/form.html" %}
+        <p class="pb-muted">{% trans "Use $...$ for math." %}</p>
+        <button type="submit" class="btn btn-sm btn-primary">{% trans "Save" %}</button>
+        <a class="btn btn-sm btn-link" href="?{{ ban_query }}">{% trans "Cancel" %}</a>
+    </form>
+{% elif description %}
+    <section class="mb-4">
+        <div class="pb-text mb-2">{{ description.statement }}</div>
+        {% if description.rating_reason %}<div class="pb-muted mb-2">{{ description.rating_reason }}</div>{% endif %}
+        {% if description.solution %}
+            <details>
+                <summary>{% trans "Solution" %}</summary>
+                <div class="pb-text mt-1">{{ description.solution }}</div>
+            </details>
+        {% endif %}
+        <div class="pb-muted mt-2">{{ description.get_source_display }} · <a href="?{% if ban_query %}{{ ban_query }}&amp;{% endif %}edit=1">{% trans "edit" %}</a></div>
+    </section>
+{% else %}
+    <p class="pb-muted"><a href="?{% if ban_query %}{{ ban_query }}&amp;{% endif %}edit=1">{% trans "Add description" %}</a></p>
+{% endif %}
+
+<h2 class="h5">{% trans "Packages" %}</h2>
+<div class="table-responsive">
+<table class="table table-sm pb-table">
+    <thead>
+        <tr>
+            <th>{% trans "Problem" %}</th>
+            <th>{% trans "Upload date" %}</th>
+            <th>{% trans "Contests" %}</th>
+            {% if packages|length > 1 %}<th>{% trans "Model solution" %}</th><th></th>{% endif %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for package in packages %}
+        <tr>
+            <td>
+                <a href="{% url 'oioioiadmin:problems_problem_change' package.problem.id %}">{{ package.problem.name }}</a>
+                <span class="pb-muted">{{ package.problem.short_name }} · #{{ package.problem.id }}</span>
+            </td>
+            <td class="pb-muted text-nowrap">{{ package.uploaded|date:"Y-m-d"|default:"–" }}</td>
+            <td>
+                {% for pi in package.instances %}
+                    <div>{{ pi.contest.name }}{% if pi.round %} <span class="pb-muted">· {{ pi.round.name }} · {{ pi.round.start_date|date:"Y-m-d" }}</span>{% endif %}</div>
+                {% empty %}
+                    <span class="pb-muted">–</span>
+                {% endfor %}
+            </td>
+            {% if packages|length > 1 %}
+                <td class="pb-muted text-nowrap">
+                    {% if package.solution == "same" %}{% trans "identical" %}{% elif package.solution == "different" %}<span class="text-warning-emphasis">{% trans "different" %}</span>{% else %}–{% endif %}
+                </td>
+                <td class="text-end">
+                    <form method="post" action="{% url 'problembase_unlink' problem_id=package.problem.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="ban_query" value="{{ ban_query }}">
+                        <button type="submit" class="btn btn-link btn-sm p-0">{% trans "unlink" %}</button>
+                    </form>
+                </td>
+            {% endif %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% if ban %}
+<h2 class="h5" id="seen">{% trans "Seen by" %}</h2>
+{% if seen_rows %}
+<table class="table table-sm pb-table w-auto">
+    <tbody>
+    {% for seen in seen_rows %}
+        <tr>
+            <td class="pb-seen">{{ seen.user.get_full_name|default:seen.user.username }} <span class="pb-muted fw-normal">{{ seen.user.username }}</span></td>
+            <td>{% for contest, submitted in seen.contests %}{{ contest.name }}{% if submitted %} <span class="pb-muted">({% trans "submitted" %})</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="pb-muted">{% trans "Nobody from the ban list has seen this problem." %}</p>
+{% endif %}
+{% endif %}
+{% endblock %}

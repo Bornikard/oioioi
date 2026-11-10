@@ -1,0 +1,34 @@
+{% load i18n %}
+<details class="pb-ban mb-3"{% if ban.unknown_logins %} open{% endif %}>
+    <summary>
+        {% if ban %}
+            <span class="pb-seen">{% blocktrans count counter=ban.users|length %}Ban: {{ counter }} person{% plural %}Ban: {{ counter }} people{% endblocktrans %}</span>
+            {% if ban.contests %}<span class="pb-muted">· {% for contest in ban.contests %}{{ contest.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+        {% else %}
+            {% trans "Ban: nobody" %}
+        {% endif %}
+    </summary>
+    <form method="get" class="row g-2 mt-1">
+        <input type="hidden" name="ban" value="1">
+        {% for name, value in keep %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+        <div class="col-md-6">
+            <label class="form-label pb-muted" for="pb-ban-contest">{% trans "Participants of contests" %}</label>
+            <select multiple class="form-select form-select-sm" id="pb-ban-contest" name="ban_contest">
+                {% for contest in all_contests %}
+                    <option value="{{ contest.id }}"{% if contest.id in ban_contest_ids %} selected{% endif %}>{{ contest.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label pb-muted" for="pb-ban-logins">{% trans "Logins" %}</label>
+            <textarea class="form-control form-control-sm" id="pb-ban-logins" name="ban_logins" rows="7">{{ ban_logins }}</textarea>
+            {% if ban.unknown_logins %}
+                <div class="text-danger small mt-1">{% trans "Unknown logins:" %} {{ ban.unknown_logins|join:", " }}</div>
+            {% endif %}
+        </div>
+        <div class="col-12">
+            <button type="submit" class="btn btn-sm btn-primary">{% trans "Apply" %}</button>
+            <a class="btn btn-sm btn-link" href="?ban=1{% for name, value in keep %}&amp;{{ name }}={{ value|urlencode }}{% endfor %}">{% trans "Clear" %}</a>
+        </div>
+    </form>
+</details>

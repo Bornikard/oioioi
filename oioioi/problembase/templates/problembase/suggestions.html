@@ -1,0 +1,57 @@
+{% extends "base-with-menu.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Merge suggestions" %}{% endblock %}
+
+{% block styles %}
+{{ block.super }}
+{% include "problembase/_styles.html" %}
+{% endblock %}
+
+{% block main-content %}
+<p class="pb-muted mb-1"><a href="{% url 'problembase_list' %}">&larr; {% trans "Problem base" %}</a></p>
+<div class="d-flex align-items-baseline gap-3 flex-wrap mb-3">
+    <h1 class="me-auto">{% trans "Merge suggestions" %}</h1>
+    {% if certain_count %}
+        <form method="post" action="{% url 'problembase_merge_certain' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-primary">{% blocktrans count counter=certain_count %}Merge {{ counter }} group with identical model solutions{% plural %}Merge {{ counter }} groups with identical model solutions{% endblocktrans %}</button>
+        </form>
+    {% endif %}
+</div>
+
+{% for item in items %}
+<form method="post" action="{% url 'problembase_resolve' %}" class="border-top pt-2 pb-3">
+    {% csrf_token %}
+    <table class="table table-sm table-borderless pb-table mb-1">
+        <tbody>
+        {% for row in item.families %}
+            <tr>
+                <td style="width: 2rem">
+                    <input type="hidden" name="cluster" value="{{ row.family.id }}">
+                    <input type="checkbox" class="form-check-input" name="family" value="{{ row.family.id }}" checked aria-label="{% trans 'Same problem' %}">
+                </td>
+                <td class="pb-muted" style="width: 1.5rem">{{ forloop.counter }}</td>
+                <td>
+                    <a href="{% url 'problembase_family' family_id=row.family.id %}">{{ row.name }}</a>
+                    <span class="pb-muted">{{ row.short_names|join:", " }}{% if row.problems|length > 1 %} · {% blocktrans count counter=row.problems|length %}{{ counter }} package{% plural %}{{ counter }} packages{% endblocktrans %}{% endif %}</span>
+                </td>
+                <td class="pb-muted">{% for use in row.contests %}{{ use.contest.name }} {{ use.date|date:"Y" }}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="pb-muted mb-2">
+        {% for edge in item.edges %}
+            <div>{{ edge.a }}–{{ edge.b }}:
+                {% if edge.evidence.same_solution %}{% trans "identical model solution" %}{% endif %}{% if edge.evidence.statement %}{% if edge.evidence.same_solution %}, {% endif %}{% trans "statement" %} {% widthratio edge.evidence.statement 1 100 %}%{% endif %}{% if edge.evidence.same_name %}{% if edge.evidence.same_solution or edge.evidence.statement %}, {% endif %}{% trans "same name" %}{% if edge.evidence.tests is not None %} ({% trans "tests" %} {% widthratio edge.evidence.tests 1 100 %}%){% endif %}{% endif %}
+            </div>
+        {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-sm btn-outline-primary">{% trans "Merge selected" %}</button>
+    <span class="pb-muted ms-2">{% trans "Unselected ones are marked as different and will not be suggested again." %}</span>
+</form>
+{% empty %}
+<p class="pb-muted">{% trans "No suggestions." %}</p>
+{% endfor %}
+{% endblock %}
