@@ -1,0 +1,74 @@
+{% extends "base-with-menu.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Contests" %} · {% trans "Problem catalog" %}{% endblock %}
+
+{% block styles %}
+{{ block.super }}
+{% include "problembase/_styles.html" %}
+<style>
+    .pb-contests td, .pb-contests th { font-variant-numeric: tabular-nums; }
+    .pb-contest > summary { cursor: pointer; }
+    .pb-rounds { margin: .25rem 0 .75rem 1rem; }
+    .pb-rounds td { padding: .1rem .5rem .1rem 0; }
+</style>
+{% endblock %}
+
+{% block main-content %}
+<p class="pb-muted mb-1"><a href="{% url 'problembase_list' %}">&larr; {% trans "Problem catalog" %}</a></p>
+<h1>{% trans "Contests" %}</h1>
+<p class="pb-muted">{% trans "Ratings come from the problem descriptions. Full score: the share of participants with a result who scored 100%." %}</p>
+
+<div class="table-responsive">
+<table class="table table-sm pb-table pb-contests">
+    <thead>
+        <tr>
+            <th>{% trans "Contest" %}</th>
+            <th>{% trans "Dates" %}</th>
+            <th class="text-end">{% trans "Problems" %}</th>
+            <th class="text-end">{% trans "Mean" %}</th>
+            <th class="text-end">{% trans "Median" %}</th>
+            <th class="text-end">{% trans "Range" %}</th>
+            <th class="text-end">{% trans "Full score" %}</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for c in contests %}
+        <tr>
+            <td>
+                <details class="pb-contest">
+                    <summary>{{ c.contest.name }}</summary>
+                    <table class="pb-rounds">
+                    {% for r in c.rounds %}
+                        <tr>
+                            <td colspan="4" class="pt-2">
+                                <strong>{% if r.round %}{{ r.round.name }}{% else %}{% trans "No round" %}{% endif %}</strong>
+                                <span class="pb-muted">{% if r.round %}{{ r.round.start_date|date:"Y-m-d" }}{% endif %}{% if r.summary.mean %} · {% trans "mean" %} {{ r.summary.mean }}{% endif %}{% if r.summary.full_percent is not None %} · {% trans "full score" %} {{ r.summary.full_percent }}%{% endif %}</span>
+                            </td>
+                        </tr>
+                        {% for p in r.problems %}
+                        <tr>
+                            <td>{% if p.family_id %}<a href="{% url 'problembase_family' family_id=p.family_id %}">{{ p.instance.problem.name }}</a>{% else %}{{ p.instance.problem.name }}{% endif %} <span class="pb-muted">{{ p.instance.short_name }}</span></td>
+                            <td class="text-end pb-rating">{{ p.rating|default_if_none:"" }}</td>
+                            <td class="text-end pb-muted">{% if p.result.full_score is not None and p.result.submitted %}{{ p.result.full_score }}/{{ p.result.submitted }}{% endif %}</td>
+                            <td class="text-end pb-muted">{% if p.result.average_percent is not None %}{% trans "avg." %} {{ p.result.average_percent }}%{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    {% endfor %}
+                    </table>
+                </details>
+            </td>
+            <td class="pb-muted text-nowrap">{{ c.start|date:"Y-m-d" }}{% if c.end|date:"Y-m-d" != c.start|date:"Y-m-d" %} – {{ c.end|date:"m-d" }}{% endif %}</td>
+            <td class="text-end">{{ c.summary.count }}{% if c.summary.ratings|length != c.summary.count %} <span class="pb-muted" title="{% trans 'with rating' %}">({{ c.summary.ratings|length }})</span>{% endif %}</td>
+            <td class="text-end pb-rating">{{ c.summary.mean|default_if_none:"–" }}</td>
+            <td class="text-end pb-rating">{{ c.summary.median|default_if_none:"–" }}</td>
+            <td class="text-end pb-rating pb-muted">{% if c.summary.low is not None %}{{ c.summary.low }}–{{ c.summary.high }}{% else %}–{% endif %}</td>
+            <td class="text-end pb-rating">{% if c.summary.full_percent is not None %}{{ c.summary.full_percent }}%{% else %}–{% endif %}</td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="7" class="pb-muted">{% trans "No contests with problems." %}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

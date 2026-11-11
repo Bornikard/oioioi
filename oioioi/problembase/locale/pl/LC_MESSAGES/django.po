@@ -166,6 +166,77 @@ msgstr "Nieznane loginy:"
 msgid "Different"
 msgstr "Różne"
 
+msgid "more"
+msgstr "więcej"
+
+msgid "less"
+msgstr "mniej"
+
+msgid "short"
+msgstr "krótki"
+
+msgid "full"
+msgstr "pełny"
+
+msgid "Contest"
+msgstr "Konkurs"
+
+msgid "Dates"
+msgstr "Daty"
+
+msgid "Problems"
+msgstr "Zadania"
+
+msgid "Mean"
+msgstr "Średnia"
+
+msgid "Median"
+msgstr "Mediana"
+
+msgid "Range"
+msgstr "Zakres"
+
+msgid "Full score"
+msgstr "Na 100%"
+
+msgid "full score"
+msgstr "na 100%"
+
+msgid "No round"
+msgstr "Bez rundy"
+
+msgid "mean"
+msgstr "średnia"
+
+msgid "avg."
+msgstr "śr."
+
+msgid "with rating"
+msgstr "z ratingiem"
+
+msgid "No contests with problems."
+msgstr "Brak konkursów z zadaniami."
+
+#, python-format
+msgid ""
+"Ratings come from the problem descriptions. Full score: the share of "
+"participants with a result who scored 100%."
+msgstr ""
+"Rating pochodzi z opisów zadań. Na 100%: odsetek uczestników z wynikiem, "
+"którzy zdobyli 100%."
+
+msgid "from"
+msgstr "od"
+
+msgid "to"
+msgstr "do"
+
+msgid "Rating up to"
+msgstr "Rating do"
+
+msgid "Sort by rating"
+msgstr "Sortuj po ratingu"
+
 msgid "Merge these problems into one?"
 msgstr "Na pewno połączyć te zadania w jedno?"
 

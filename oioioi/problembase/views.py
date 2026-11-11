@@ -28,9 +28,11 @@ from oioioi.problembase.models import (
 from oioioi.problembase.rejection import auto_reject, rejected_problem_ids
 from oioioi.problembase.seen import SUBMITTED, build_ban, seen_by
 from oioioi.problembase.similarity import find_clusters
+from oioioi.problembase.stats import contest_rows
 from oioioi.problems.models import Problem, ProblemPackage
 
 FAMILIES_PER_PAGE = 100
+SORTS = ("", "rating", "-rating")  # by name, by rating ascending, descending
 BAN_PARAMS = ("ban", "ban_contest", "ban_logins")
 
 
@@ -142,6 +144,21 @@ def _ban_context(request, ban, logins):
     }
 
 
+def _with(query, **params):
+    """A copy of a QueryDict as a query string, with params set (None removes)."""
+    query = query.copy()
+    for key, value in params.items():
+        query.pop(key, None)
+        if value is not None:
+            query[key] = value
+    return query.urlencode()
+
+
+def _int_param(request, name):
+    value = request.GET.get(name, "").strip()
+    return int(value) if value.isdigit() else None
+
+
 @enforce_condition(is_superuser)
 def family_list_view(request):
     ensure_families()
@@ -149,6 +166,10 @@ def family_list_view(request):
     query = request.GET.get("q", "").strip()
     hide_seen = bool(request.GET.get("hide_seen")) and bool(ban)
     show_rejected = bool(request.GET.get("show_rejected"))
+    rating_min, rating_max = _int_param(request, "rating_min"), _int_param(request, "rating_max")
+    full_view = request.GET.get("view") == "full"
+    sort = request.GET.get("sort", "")
+    sort = sort if sort in SORTS else ""
     rejected = rejected_problem_ids()
 
     problems = Problem.objects.all()
@@ -174,7 +195,15 @@ def family_list_view(request):
     rejected_families = matching - kept_families
     if not show_rejected:
         matching = kept_families
+    ratings = dict(ProblemDescription.objects.filter(family_id__in=matching, rating__isnull=False).values_list("family_id", "rating"))
+    if rating_min is not None or rating_max is not None:
+        low, high = rating_min or 0, rating_max if rating_max is not None else 10**6
+        matching = {fid for fid in matching if fid in ratings and low <= ratings[fid] <= high}
     family_ids = sorted(matching, key=lambda fid: (names.get(fid, rejected_names.get(fid, "")).lower(), fid))
+    if sort:
+        # stable: equal ratings stay by name; problems without a rating go last
+        rated = sorted((fid for fid in family_ids if fid in ratings), key=lambda fid: ratings[fid], reverse=sort == "-rating")
+        family_ids = rated + [fid for fid in family_ids if fid not in ratings]
 
     seen_family_ids = set()
     if ban:
@@ -189,6 +218,10 @@ def family_list_view(request):
 
     page_query = request.GET.copy()
     page_query.pop("page", None)
+    sort_query = page_query.copy()
+    sort_query["sort"] = SORTS[(SORTS.index(sort) + 1) % len(SORTS)]
+    if not sort_query["sort"]:
+        del sort_query["sort"]
     context = {
         "rows": rows,
         "page": page,
@@ -196,12 +229,17 @@ def family_list_view(request):
         "query": query,
         "hide_seen": hide_seen,
         "show_rejected": show_rejected,
+        "rating_min": rating_min,
+        "rating_max": rating_max,
+        "sort": sort,
+        "sort_query": sort_query.urlencode(),
+        "full_view": full_view,
+        "short_view_query": _with(page_query, view=None),
+        "full_view_query": _with(page_query, view="full"),
         "rejected_count": len(rejected_families),
         "family_count": len(family_ids),
         "seen_count": len(seen_family_ids),
-        "keep_for_ban": [
-            (key, value) for key, value in (("q", query), ("hide_seen", "1" if hide_seen else ""), ("show_rejected", "1" if show_rejected else "")) if value
-        ],
+        "keep_for_ban": [(key, value) for key, values in page_query.lists() if key not in BAN_PARAMS for value in values if value],
     }
     context.update(_ban_context(request, ban, logins))
     return TemplateResponse(request, "problembase/list.html", context)
@@ -310,6 +348,11 @@ def _family_url(family, request):
 def _next_url(request, default):
     url = request.POST.get("next", "")
     return url if url.startswith("/") and not url.startswith("//") else default
+
+
+@enforce_condition(is_superuser)
+def contests_view(request):
+    return TemplateResponse(request, "problembase/contests.html", {"contests": contest_rows()})
 
 
 @require_POST
