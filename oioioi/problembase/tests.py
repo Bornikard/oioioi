@@ -209,7 +209,14 @@ class TestViews(ProblemBaseTestCase):
 
     def test_superuser_only(self):
         self.assertTrue(self.client.login(username="test_user"))
-        self.assertEqual(self.client.get(reverse("problembase_list")).status_code, 403)
+        family = family_of(self.a).id
+        for name, kwargs in (
+            ("problembase_list", {}),
+            ("problembase_family", {"family_id": family}),
+            ("problembase_suggestions", {}),
+            ("problembase_contests", {}),
+        ):
+            self.assertEqual(self.client.get(reverse(name, kwargs=kwargs)).status_code, 403, name)
 
     def test_list_and_family(self):
         ProblemDescription.objects.create(family=family_of(self.a), statement="Policz $\\sum a_i$.", rating=1500, rating_reason="Proste sumy.")
@@ -469,6 +476,17 @@ class TestExport(TestCase):
         files = read_package_files(FieldFile(buffer.getvalue()))
         self.assertEqual(set(files), {"doc/abczad.tex", "doc/abcopr.tex", "config.yml"})
 
+    def test_doc_kind(self):
+        from oioioi.problembase.export import doc_kind
+
+        self.assertEqual(doc_kind("doc/grozad.pdf", None, "gro"), "statement")
+        self.assertEqual(doc_kind("doc/grozad.tex", "\\documentclass{sinol}", "gro"), "statement")
+        self.assertEqual(doc_kind("doc/rozopr.tex", "\\documentclass{sinol}", "roz"), "editorial")
+        self.assertEqual(doc_kind("doc/abc.tex", "\\documentclass[opr,utf8]{sinol}", "abc"), "editorial")
+        self.assertEqual(doc_kind("doc/abc.tex", "\\documentclass[zad,utf8]{sinol}", "abc"), "statement")
+        self.assertEqual(doc_kind("doc/abcsol.pdf", None, "abc"), "editorial")
+        self.assertIsNone(doc_kind("doc/sinol.cls.tex", "", "abc"))
+
     def test_solution_order(self):
         from oioioi.problembase.export import _solution_key
 
@@ -578,6 +596,17 @@ class TestDescribeTool(TestCase):
         self.assertEqual({self.tool.stratum(r) for r in chosen}, {"easy", "medium", "hard", "unknown"})
         self.assertEqual([r["family_id"] for r in chosen], [r["family_id"] for r in self.tool.sample(records, 4, seed=1)])
 
+    def test_editorial_that_is_a_statement_is_dropped(self):
+        statement = "Bajtazar ma ciąg n liczb i chce znaleźć najdłuższy fragment o sumie podzielnej przez k. " * 3
+        real = "\\documentclass[opr,utf8]{sinol}\\begin{document}Omówienie: liczymy sumy prefiksowe modulo k, złożoność $O(n)$.\\end{document}"
+        self.assertTrue(self.tool.usable_editorial(export_record(1, statement_tex="", statement_text=statement, editorial=real)))
+        copy = export_record(2, statement_tex="", statement_text=statement, editorial="Zadanie: ABC " + statement)
+        self.assertEqual(self.tool.usable_editorial(copy), "")
+        sinol_zad = export_record(3, editorial="\\documentclass[zad,zawodnik,utf8]{sinol}\\begin{document}Sad\\end{document}")
+        self.assertEqual(self.tool.usable_editorial(sinol_zad), "")
+        other_format = export_record(4, editorial="\\pageHeader{Rozbicie} Jasio lubi historię. Wejście: liczba n. Wyjście: wynik.")
+        self.assertEqual(self.tool.usable_editorial(other_format), "")
+
     def test_prompt(self):
         prompt = self.tool.build_prompt(export_record(7, [use("Gródek Mistrzowska", submitted=10, full=3)]))
         self.assertIn("Policz $n$", prompt)
@@ -624,3 +653,74 @@ class TestImport(ProblemBaseTestCase):
         self.assertEqual(ProblemDescription.objects.get(family=family_of(b)).statement, "Ręczny opis.")
         self.assertTrue(self.client.login(username="test_admin"))
         self.assertContains(self.client.get(reverse("problembase_list")), "kombinatoryka")
+
+
+class TestRatingFilterAndSort(ProblemBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        problems = {name: self._problem(name[:3].lower(), name) for name in ("Alfa", "Beta", "Gamma", "Delta")}
+        ensure_families()
+        for name, rating in (("Alfa", 2400), ("Beta", 1200), ("Gamma", 1800)):
+            ProblemDescription.objects.create(family=family_of(problems[name]), statement=name, rating=rating)
+        self.assertTrue(self.client.login(username="test_admin"))
+
+    def _names(self, **params):
+        response = self.client.get(reverse("problembase_list"), params)
+        return [row.name for row in response.context["rows"]]
+
+    def test_default_sort_by_name(self):
+        self.assertEqual(self._names(), ["Alfa", "Beta", "Delta", "Gamma"])
+
+    def test_sort_by_rating(self):
+        self.assertEqual(self._names(sort="rating"), ["Beta", "Gamma", "Alfa", "Delta"])
+        self.assertEqual(self._names(sort="-rating"), ["Alfa", "Gamma", "Beta", "Delta"])
+
+    def test_filter(self):
+        self.assertEqual(self._names(rating_min="1500"), ["Alfa", "Gamma"])
+        self.assertEqual(self._names(rating_min="1200", rating_max="1800"), ["Beta", "Gamma"])
+        self.assertEqual(self._names(rating_max="1000"), [])
+        self.assertEqual(self._names(rating_min="abc"), ["Alfa", "Beta", "Delta", "Gamma"])
+
+    def test_header_cycles_sort_and_keeps_filters(self):
+        response = self.client.get(reverse("problembase_list"), {"rating_min": "1500"})
+        self.assertEqual(response.context["sort_query"], "rating_min=1500&sort=rating")
+        response = self.client.get(reverse("problembase_list"), {"rating_min": "1500", "sort": "-rating"})
+        self.assertEqual(response.context["sort_query"], "rating_min=1500")
+
+
+class TestViewsAndContests(ProblemBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        now = timezone.now()
+        self.contest = Contest.objects.create(id="c1", name="Obóz 2025", controller_name="oioioi.participants.tests.ParticipantsContestController")
+        self.round = Round.objects.create(contest=self.contest, name="Dzień 1", start_date=now - timedelta(days=2))
+        self.problems = []
+        for short in ("aaa", "bbb", "ccc"):
+            problem = self._problem(short, short.upper())
+            ProblemInstance.objects.create(problem=problem, contest=self.contest, round=self.round, short_name=short)
+            self.problems.append(problem)
+        ensure_families()
+        for problem, rating in zip(self.problems, (1200, 2000, None), strict=True):
+            if rating:
+                name = problem.short_name
+                ProblemDescription.objects.create(family=family_of(problem), statement="Opis " + name, solution="Rozw " + name, rating=rating)
+        self.assertTrue(self.client.login(username="test_admin"))
+
+    def test_contest_stats(self):
+        from oioioi.problembase.stats import contest_rows
+
+        (row,) = contest_rows()
+        self.assertEqual((row.summary.count, row.summary.mean, row.summary.median, row.summary.low, row.summary.high), (3, 1600, 1600, 1200, 2000))
+        self.assertEqual([p.rating for p in row.rounds[0].problems], [1200, 2000, None])
+        response = self.client.get(reverse("problembase_contests", kwargs={"contest_id": "c1"}))
+        self.assertContains(response, "Obóz 2025")
+        self.assertContains(response, "1600")
+
+    def test_full_and_short_view(self):
+        url = reverse("problembase_list", kwargs={"contest_id": "c1"})
+        response = self.client.get(url)
+        self.assertContains(response, "Rozw aaa")
+        self.assertNotContains(response, 'class="pb-more" open')
+        response = self.client.get(url, {"view": "full"})
+        self.assertContains(response, 'class="pb-more" open')
+        self.assertEqual(response.context["short_view_query"], "")

@@ -127,6 +127,29 @@ def tex_body(tex):
     return re.sub(r"(?m)(?<!\\)%.*$", "", body).strip()
 
 
+def _shingles(text, size=5):
+    words = re.findall(r"\w+", text.lower())
+    return {" ".join(words[i : i + size]) for i in range(max(0, len(words) - size + 1))}
+
+
+def usable_editorial(record):
+    """The editorial, unless it is really the statement (older exports picked
+    ``<id>zad.pdf`` as an editorial when the id ended with "ro")."""
+    editorial = record.get("editorial") or ""
+    if not editorial:
+        return ""
+    if re.search(r"\\documentclass\[[^\]]*\bzad\b", editorial[:2000]):
+        return ""
+    lower = editorial.lower()
+    if "wejście" in lower and "wyjście" in lower and not any(w in lower for w in ("rozwiąza", "omówienie", "opracowanie", "złożoność")):
+        return ""  # a statement in another format
+    statement = tex_body(record["statement_tex"]) if record["statement_tex"] else record["statement_text"]
+    a, b = _shingles(tex_body(editorial)), _shingles(statement)
+    if a and b and len(a & b) / min(len(a), len(b)) > 0.3:
+        return ""
+    return editorial
+
+
 def contests_for_prompt(record):
     lines = []
     for use in record["contests"]:
@@ -210,8 +233,9 @@ Użycia na obozach i wyniki:
     ]
     if record.get("config_yml"):
         parts.append(f"### config.yml (punktacja podzadań, limity)\n{record['config_yml']}\n")
-    if record.get("editorial"):
-        parts.append(f"### Opracowanie\n{tex_body(record['editorial'])}\n")
+    editorial = usable_editorial(record)
+    if editorial:
+        parts.append(f"### Opracowanie\n{tex_body(editorial)}\n")
     for solution in record.get("solutions", []):
         parts.append(f"### Rozwiązanie wzorcowe {solution['name']}\n```\n{solution['source']}\n```\n")
     return "\n".join(parts)
@@ -342,7 +366,7 @@ def show(path):
         print(f"\n## {record['name']} ({record['short_name']}, rodzina {record['family_id']})  rating {a['rating']}")
         print(f"Zadanie: {a['statement']}")
         print(f"Rozwiązanie: {a['solution']}")
-        print(f"Tagi: {tags}" + (f" | poboczne: {side}" if side else "") + f" | obiekty: {', '.join(a['objects'])}")
+        print(f"Tagi: {tags}" + (f" | poboczne: {side}" if side else "") + f" | obiekty: {', '.join(taxonomy.OBJECT_NAMES[o] for o in a['objects'])}")
         print(f"Trudność: {a['rating_reason']}")
 
 
@@ -363,6 +387,7 @@ def main():
     parser.add_argument("--max-cost", type=float, default=5.0, help="stop after this many dollars (estimate, default 5)")
     parser.add_argument("--dry-run", action="store_true", help="print the prompt of the first chosen family, send nothing")
     args = parser.parse_args()
+    sys.stdout.reconfigure(line_buffering=True)  # progress shows up at once also through a pipe (tee, tmux)
 
     if args.show:
         show(args.show)
@@ -400,7 +425,7 @@ def main():
     import httpx
 
     print(f"model {model}, thinking {thinking}, {len(chosen)} families, limit ${args.max_cost:.2f}")
-    spent, lock, stop = 0.0, threading.Lock(), threading.Event()
+    spent, lock, stop, started = 0.0, threading.Lock(), threading.Event(), time.time()
     output = open(args.output, "a", encoding="utf-8")
 
     def work(record):
@@ -437,7 +462,12 @@ def main():
                 output.write(json.dumps(result, ensure_ascii=False) + "\n")
                 output.flush()
                 tags = ", ".join(analysis["main_tags"])
-                print(f"[{i}/{len(chosen)}] {record['short_name']}: rating {analysis['rating']}, {tags} (${cost:.3f}, total ${spent:.2f})")
+                elapsed = time.time() - started
+                eta = elapsed / i * (len(chosen) - i)
+                print(
+                    f"[{i}/{len(chosen)}] {record['short_name']}: rating {analysis['rating']}, {tags} "
+                    f"(${cost:.3f}, total ${spent:.2f}, {elapsed / 60:.0f} min, ~{eta / 60:.0f} min left)"
+                )
                 if spent >= args.max_cost and not stop.is_set():
                     stop.set()
                     print(f"cost limit ${args.max_cost:.2f} reached, finishing requests in flight")

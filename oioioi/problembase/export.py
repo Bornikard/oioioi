@@ -16,15 +16,15 @@ import tempfile
 import zipfile
 from collections import defaultdict
 
-from django.db.models import Count, Max, Sum
+from django.db.models import Count, Max
 from django.utils import timezone
 
-from oioioi.contests.models import ProblemInstance, UserResultForProblem
-from oioioi.contests.scores import IntegerScore
+from oioioi.contests.models import ProblemInstance
 from oioioi.participants.models import Participant
 from oioioi.problembase.fingerprint import pdf_text
 from oioioi.problembase.models import ProblemFamilyMember, ProblemFingerprint
 from oioioi.problembase.rejection import rejected_problem_ids
+from oioioi.problembase.stats import instance_results
 from oioioi.problems.models import Problem, ProblemPackage, ProblemStatement
 from oioioi.programs.models import ModelSolution, Test
 
@@ -34,7 +34,7 @@ MAX_SOLUTIONS = 3
 MAX_SOURCE_CHARS = 30000
 MAX_TEXT_CHARS = 60000
 SOLUTION_EXTENSIONS = ["cpp", "cc", "cxx", "c", "py", "java", "pas"]
-EDITORIAL_WORDS = ("opr", "roz", "sol", "editorial")
+EDITORIAL_WORDS = ("opr", "roz", "sol")
 
 
 def decode(data):
@@ -71,7 +71,7 @@ def _wanted(relative):
     if lower in ("config.yml", "config.yaml"):
         return True
     if lower.startswith("doc/") and "/" not in lower[4:]:
-        return lower.endswith(".tex") or (lower.endswith(".pdf") and any(word in lower[4:] for word in EDITORIAL_WORDS))
+        return lower.endswith((".tex", ".pdf"))
     return False
 
 
@@ -99,27 +99,46 @@ def read_package_files(field_file):
         return files
 
 
+def doc_kind(name, text, short_name):
+    """ "statement", "editorial" or None for a file in doc/.
+
+    The sinol class option decides for LaTeX files (``\\documentclass[opr]`` is an
+    editorial, ``[zad]`` a statement). Otherwise the file name, with the problem's
+    short name cut off first (``grozad.pdf`` is a statement of ``gro``, not "roz...").
+    """
+    if text is not None:
+        options = re.search(r"\\documentclass\[([^\]]*)\]", text[:2000])
+        options = {o.strip() for o in options.group(1).split(",")} if options else set()
+        if "opr" in options:
+            return "editorial"
+        if "zad" in options:
+            return "statement"
+    base = name.lower().rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    short = short_name.lower()
+    rest = base[len(short) :] if short and base.startswith(short) else base
+    if rest.startswith(EDITORIAL_WORDS) or any(word in base for word in ("opracowanie", "rozwiazanie", "rozwiązanie", "editorial", "solution")):
+        return "editorial"
+    if rest.startswith("zad") or rest == "":
+        return "statement"
+    return None
+
+
 def _split_doc(files, short_name):
-    """(statement tex, editorial text) from the doc/ files of a package."""
-    statement, editorial = "", ""
+    """(statement tex, editorial text, editorial file name) from the doc/ files of a package."""
     tex = {name: decode(data) for name, data in files.items() if name.lower().endswith(".tex")}
-    statement_names = sorted((n for n in tex if "zad" in n.lower()), key=lambda n: (short_name.lower() not in n.lower(), n))
-    if not statement_names:
-        statement_names = sorted(n for n in tex if not any(word in n.lower() for word in EDITORIAL_WORDS))
-    if statement_names:
-        statement = tex[statement_names[0]]
-    editorial_names = sorted(n for n in tex if any(word in n.lower()[4:] for word in EDITORIAL_WORDS) and "zad" not in n.lower())
-    if editorial_names:
-        editorial = tex[editorial_names[0]]
-    else:
-        for name, data in sorted(files.items()):
-            if name.lower().endswith(".pdf"):
-                try:
-                    editorial = pdf_text(data)
-                except Exception as e:
-                    logger.info("Cannot read editorial %s: %s", name, e)
-                break
-    return statement[:MAX_TEXT_CHARS], editorial[:MAX_TEXT_CHARS]
+    kinds = {name: doc_kind(name, text, short_name) for name, text in tex.items()}
+    statements = sorted(n for n, kind in kinds.items() if kind == "statement") or sorted(n for n, kind in kinds.items() if kind is None)
+    statement = tex[statements[0]] if statements else ""
+    editorials = sorted(n for n, kind in kinds.items() if kind == "editorial")
+    if editorials:
+        return statement[:MAX_TEXT_CHARS], tex[editorials[0]][:MAX_TEXT_CHARS], editorials[0]
+    for name, data in sorted(files.items()):
+        if name.lower().endswith(".pdf") and doc_kind(name, None, short_name) == "editorial":
+            try:
+                return statement[:MAX_TEXT_CHARS], pdf_text(data)[:MAX_TEXT_CHARS], name
+            except Exception as e:
+                logger.info("Cannot read editorial %s: %s", name, e)
+    return statement[:MAX_TEXT_CHARS], "", ""
 
 
 def _solution_key(solution, short_name):
@@ -152,27 +171,18 @@ def _pdf_statement(problem):
 def contest_uses(problem_ids):
     """Contests the problems were used in, with results, newest first."""
     instances = list(ProblemInstance.objects.filter(problem_id__in=problem_ids, contest__isnull=False).select_related("contest", "round"))
-    max_points = dict(
-        Test.objects.filter(problem_instance__in=instances, is_active=True)
-        .values_list("problem_instance_id")
-        .annotate(total=Sum("max_score"))
-        .values_list("problem_instance_id", "total")
-    )
     participant_count = dict(
         Participant.objects.filter(contest_id__in={pi.contest_id for pi in instances})
         .values("contest_id")
         .annotate(n=Count("id"))
         .values_list("contest_id", "n")
     )
-    results = defaultdict(list)
-    for pi_id, score in UserResultForProblem.objects.filter(problem_instance__in=instances).values_list("problem_instance_id", "score"):
-        if isinstance(score, IntegerScore):
-            results[pi_id].append(score.value)
+    results = instance_results(instances)
 
     uses = []
     for pi in instances:
         date = pi.round.start_date if pi.round else pi.contest.creation_date
-        scores, top = results.get(pi.id, []), max_points.get(pi.id)
+        result = results[pi.id]
         uses.append(
             {
                 "contest": pi.contest.name,
@@ -180,9 +190,7 @@ def contest_uses(problem_ids):
                 "round": pi.round.name if pi.round else "",
                 "date": date.date().isoformat() if date else None,
                 "participants": participant_count.get(pi.contest_id, 0),
-                "submitted": len(scores),
-                "full_score": sum(1 for s in scores if top and s >= top) if top else None,
-                "average_percent": round(100 * sum(scores) / (len(scores) * top)) if scores and top else None,
+                **result,
             }
         )
     uses.sort(key=lambda use: use["date"] or "", reverse=True)
@@ -199,12 +207,12 @@ def export_family(family_id, problem_ids):
     problems = list(Problem.objects.filter(id__in=problem_ids).prefetch_related("names").order_by("id"))
     representative = problems[-1]
     errors = []
-    statement_tex = editorial = config = ""
+    statement_tex = editorial = editorial_file = config = ""
     package = _package_for(representative)
     if package is not None:
         try:
             files = read_package_files(package.package_file)
-            statement_tex, editorial = _split_doc(files, representative.short_name)
+            statement_tex, editorial, editorial_file = _split_doc(files, representative.short_name)
             config_name = next((n for n in files if n.lower() in ("config.yml", "config.yaml")), None)
             config = decode(files[config_name])[:MAX_TEXT_CHARS] if config_name else ""
         except Exception as e:
@@ -227,6 +235,7 @@ def export_family(family_id, problem_ids):
         "statement_tex": statement_tex,
         "statement_text": statement_text,
         "editorial": editorial,
+        "editorial_file": editorial_file,
         "config_yml": config,
         "solutions": solutions,
         "limits": _limits(representative),

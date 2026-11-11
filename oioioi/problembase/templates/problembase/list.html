@@ -11,12 +11,19 @@
 {% block main-content %}
 <div class="d-flex align-items-baseline gap-3 flex-wrap">
     <h1 class="me-auto">{% trans "Problem catalog" %}</h1>
+    <a href="{% url 'problembase_contests' %}">{% trans "Contests" %}</a>
     <a href="{% url 'problembase_suggestions' %}">{% trans "Merge suggestions" %}</a>
 </div>
 
 <form method="get" class="d-flex gap-2 mb-2" role="search">
-    {% for key, value in request.GET.lists %}{% if key == "ban" or key == "ban_contest" or key == "ban_logins" %}{% for v in value %}<input type="hidden" name="{{ key }}" value="{{ v }}">{% endfor %}{% endif %}{% endfor %}
+    {% for key, value in request.GET.lists %}{% if key == "ban" or key == "ban_contest" or key == "ban_logins" or key == "sort" or key == "show_rejected" or key == "view" %}{% for v in value %}<input type="hidden" name="{{ key }}" value="{{ v }}">{% endfor %}{% endif %}{% endfor %}
     <input type="search" class="form-control form-control-sm" style="max-width: 24rem" name="q" value="{{ query }}" placeholder="{% trans 'Name, short name or contest' %}">
+    <div class="d-flex align-items-center gap-1">
+        <label class="pb-muted text-nowrap" for="pb-rating-min">{% trans "Rating" %}</label>
+        <input type="number" class="form-control form-control-sm pb-rating-input" id="pb-rating-min" name="rating_min" value="{{ rating_min|default_if_none:'' }}" min="800" max="3500" step="100" placeholder="{% trans 'from' %}">
+        <span class="pb-muted">–</span>
+        <input type="number" class="form-control form-control-sm pb-rating-input" name="rating_max" value="{{ rating_max|default_if_none:'' }}" min="800" max="3500" step="100" placeholder="{% trans 'to' %}" aria-label="{% trans 'Rating up to' %}">
+    </div>
     {% if ban %}
         <div class="form-check align-self-center">
             <input class="form-check-input" type="checkbox" name="hide_seen" value="1" id="pb-hide-seen"{% if hide_seen %} checked{% endif %} onchange="this.form.submit()">
@@ -37,6 +44,9 @@
     <span class="pb-muted me-auto">
         {% blocktrans count counter=family_count %}{{ counter }} problem{% plural %}{{ counter }} problems{% endblocktrans %}{% if ban %} · <span class="pb-seen">{% blocktrans with seen=seen_count %}{{ seen }} seen{% endblocktrans %}</span>{% endif %}
     </span>
+    <span class="pb-view-switch">
+        {% if full_view %}<a href="?{{ short_view_query }}">{% trans "short" %}</a> · <strong>{% trans "full" %}</strong>{% else %}<strong>{% trans "short" %}</strong> · <a href="?{{ full_view_query }}">{% trans "full" %}</a>{% endif %}
+    </span>
     <button type="submit" form="pb-merge-form" class="btn btn-sm btn-outline-primary">{% trans "Merge selected" %}</button>
 </div>
 
@@ -46,7 +56,7 @@
         <tr>
             <th></th>
             <th>{% trans "Problem" %}</th>
-            <th class="text-end">{% trans "Rating" %}</th>
+            <th class="text-end text-nowrap"><a href="?{{ sort_query }}" class="link-body-emphasis text-decoration-none" title="{% trans 'Sort by rating' %}">{% trans "Rating" %}{% if sort == "rating" %} ↑{% elif sort == "-rating" %} ↓{% endif %}</a></th>
             <th>{% trans "Contests" %}</th>
             {% if ban %}<th>{% trans "Seen" %}</th>{% endif %}
         </tr>
@@ -59,15 +69,26 @@
                 <a href="{% url 'problembase_family' family_id=row.family.id %}{% if ban_query %}?{{ ban_query }}{% endif %}">{{ row.name }}</a>
                 <span class="pb-muted">{{ row.short_names|join:", " }}{% if row.problems|length > 1 %} · {% blocktrans count counter=row.problems|length %}{{ counter }} package{% plural %}{{ counter }} packages{% endblocktrans %}{% endif %}{% if row.all_rejected %} · {% trans "rejected" %}{% endif %}</span>
                 {% if row.description %}
-                    <div class="pb-summary">{{ row.description.statement }}</div>
-                    {% if row.description.main_tag_names %}<div class="pb-tags">{{ row.description.main_tag_names|join:" · " }}</div>{% endif %}
-                    {% if row.description.rating_reason %}<div class="pb-muted">{{ row.description.rating_reason }}</div>{% endif %}
+                    {% with d=row.description %}
+                    <details class="pb-more"{% if full_view %} open{% endif %}>
+                        <summary><span class="pb-summary pb-text">{{ d.statement }}</span><span class="pb-toggle"></span></summary>
+                        {% if d.solution %}<div class="pb-text mt-1"><span class="pb-label">{% trans "Solution" %}:</span> {{ d.solution }}</div>{% endif %}
+                        {% if d.side_tag_names or d.object_names %}<div class="pb-muted">{{ d.side_tag_names|join:" · " }}{% if d.side_tag_names and d.object_names %} — {% endif %}{{ d.object_names|join:", " }}</div>{% endif %}
+                    </details>
+                    {% if d.main_tag_names %}<div class="pb-tags">{{ d.main_tag_names|join:" · " }}</div>{% endif %}
+                    {% if d.rating_reason %}<div class="pb-muted">{{ d.rating_reason }}</div>{% endif %}
+                    {% endwith %}
                 {% endif %}
             </td>
             <td class="text-end pb-rating">{{ row.description.rating|default_if_none:"" }}</td>
             <td class="pb-muted">
-                {% for use in row.contests|slice:":3" %}{{ use.contest.name }} {{ use.date|date:"Y" }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
-                {% if row.contests|length > 3 %}<br>+{{ row.contests|length|add:"-3" }}{% endif %}
+                {% for use in row.contests|slice:":3" %}<div>{{ use.contest.name }} {{ use.date|date:"Y" }}</div>{% endfor %}
+                {% if row.contests|length > 3 %}
+                    <details class="pb-more-contests"{% if full_view %} open{% endif %}>
+                        <summary>+{{ row.contests|length|add:"-3" }}</summary>
+                        {% for use in row.contests|slice:"3:" %}<div>{{ use.contest.name }} {{ use.date|date:"Y" }}</div>{% endfor %}
+                    </details>
+                {% endif %}
             </td>
             {% if ban %}
                 <td>{% if row.seen %}<a class="pb-seen" href="{% url 'problembase_family' family_id=row.family.id %}?{{ ban_query }}#seen">{{ row.seen|length }}</a>{% endif %}</td>
